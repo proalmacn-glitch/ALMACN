@@ -205,11 +205,10 @@ def formulario():
 
     cod = st.text_input("ID / CÓDIGO / 코드").upper().strip()
     
-    # --- CAMBIO IMPORTANTE: value=None PARA QUE SALGA VACÍO ---
+    # Value=None para que salga limpio
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기")
     
     if acc == "ENTRADA":
-        # --- TAMBIÉN AQUÍ VACÍO ---
         conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None)
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         dest = "ALMACEN"
@@ -219,7 +218,7 @@ def formulario():
         
     if st.button("REGISTRAR / 등록"):
         if not cod: st.error("Falta Código / 코드 필요"); return
-        if cant is None: st.error("Falta Cantidad / 수량 필요"); return # VALIDACIÓN DE VACÍO
+        if cant is None: st.error("Falta Cantidad / 수량 필요"); return
         
         if acc == "ENTRADA":
             if conf is None: st.error("Falta Confirmar Cantidad / 수량 확인 필요"); return
@@ -262,7 +261,13 @@ def buscar():
         t = 0; u = set()
         for col in ["materiales", "holders"]:
             for d in db.collection(col).where("item", "==", c).stream():
-                dt = d.to_dict(); t += dt.get('cantidad', 0); u.add(dt.get('ubicacion', ''))
+                dt = d.to_dict()
+                t += dt.get('cantidad', 0)
+                
+                # --- FILTRO IMPORTANTE: NO MOSTRAR "SALIDA" ---
+                loc = dt.get('ubicacion', '').upper()
+                if "SALIDA" not in loc and loc != "":
+                    u.add(dt.get('ubicacion', ''))
         
         stock_val = t
         ubi_val = ", ".join(u) if u else "---"
