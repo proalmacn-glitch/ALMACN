@@ -6,13 +6,13 @@ from datetime import datetime
 import os
 import random
 
-# --- CONFIGURACIÓN INICIAL ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
 
-# --- CONEXIÓN FIREBASE + STORAGE (FOTOS) ---
+# --- CONEXIÓN FIREBASE + FOTOS (STORAGE) ---
 if not firebase_admin._apps:
     try:
-        # DATOS DE TU BUCKET (SACADO DE TU FOTO)
+        # TU BUCKET PARA LAS FOTOS
         bucket_name = 'almacnn.firebasestorage.app'
         
         cred_path = "Key.json"
@@ -24,11 +24,11 @@ if not firebase_admin._apps:
                 cred = credentials.Certificate(dict(st.secrets["textkey"]))
                 firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
-        st.error(f"Error Conexión / 연결 오류: {e}")
+        st.error(f"Error Conexión: {e}")
 
 db = firestore.client()
 
-# --- ESTILOS CSS ---
+# --- ESTILOS VISUALES ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -36,8 +36,8 @@ st.markdown("""
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
     div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label { color: yellow !important; font-size: 16px !important; }
-    .stTextInput>div>div>input { text-align: center; }
-    .stNumberInput>div>div>input { text-align: center; }
+    .stTextInput>div>div>input, .stNumberInput>div>div>input { text-align: center; }
+    /* NÚMEROS GIGANTES */
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
     div[data-testid="stMetric"] { display: flex; flex-direction: column; align-items: center; background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
@@ -64,18 +64,12 @@ def login():
             data = doc.to_dict()
             if str(data.get('clave')) == password:
                 if user == "YAKO":
-                    st.session_state.user = "YAKO"
-                    st.session_state.page = 'menu'
-                    st.rerun()
+                    st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
                 elif data.get('estado') == "ACTIVO":
                     if data.get('cambio_pendiente', False):
-                        st.session_state.temp_user = user
-                        st.session_state.page = 'cambio_clave'
-                        st.rerun()
+                        st.session_state.temp_user = user; st.session_state.page = 'cambio_clave'; st.rerun()
                     else:
-                        st.session_state.user = data.get('nombre_personal', user)
-                        st.session_state.page = 'menu'
-                        st.rerun()
+                        st.session_state.user = data.get('nombre_personal', user); st.session_state.page = 'menu'; st.rerun()
                 else: st.warning("Cuenta Pendiente")
             else: st.error("Clave Incorrecta")
         else: st.error("Usuario no existe")
@@ -91,11 +85,24 @@ def login():
         st.success(f"TOMA FOTO:\nUser: {u}\nPass: {p}")
 
     st.divider()
-    if st.button("🔍 BUSCAR MATERIAL / 재고 검색 (Acceso Libre)"): st.session_state.page = 'buscar'; st.rerun()
-    st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN)</h4>", unsafe_allow_html=True)
+
+    # --- SALIDA RÁPIDA ---
+    st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    if c1.button("SALIDA MATERIALES"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "materiales")
-    if c2.button("SALIDA HOLDERS"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "holders")
+    with c1:
+        if st.button("SALIDA MATERIALES / 자재 출고"): 
+            st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "materiales")
+    with c2:
+        if st.button("SALIDA HOLDERS / 홀더 출고"): 
+            st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "holders")
+
+    st.write("") # Espacio
+    st.write("") # Espacio
+
+    # --- BOTÓN BUSCAR (AHORA ESTÁ AL FINAL, DONDE PEDISTE) ---
+    if st.button("🔍 BUSCAR MATERIAL / 재고 검색 (Acceso Libre)"):
+        st.session_state.page = 'buscar'
+        st.rerun()
 
 def cambio_clave():
     st.title("PRIMER INICIO")
@@ -111,6 +118,7 @@ def cambio_clave():
 def menu():
     st.title("MENÚ / 메뉴")
     st.info(f"USUARIO: {st.session_state.user}")
+    
     if st.session_state.user == "YAKO":
         pend = len(list(db.collection("USUARIOS").where("estado", "==", "PENDIENTE").stream()))
         if pend > 0: st.error(f"⚠ {pend} USUARIOS PENDIENTES")
@@ -140,12 +148,18 @@ def formulario():
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO")
 
     cod = st.text_input("ID / CÓDIGO").upper().strip()
-    cant = st.number_input("CANTIDAD", min_value=1, step=1, value=None, placeholder="Escribe cantidad")
-    conf = st.number_input("CONFIRMAR CANTIDAD (Obligatorio)", min_value=1, step=1, value=None, placeholder="Repite el número")
+    
+    # --- CAMPO CANTIDAD ---
+    cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe cantidad")
+    
+    # --- CAMPO CONFIRMACIÓN (OBLIGATORIO) ---
+    st.caption("Por seguridad, confirma la cantidad:")
+    conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número")
 
     if acc == "ENTRADA": ubi = st.text_input("UBICACIÓN").upper().strip(); dest = "ALMACEN"
     else: ubi = "SALIDA / 출고"; dest = st.text_input("QUIEN RETIRA").upper().strip()
     
+    # --- FOTO DE EVIDENCIA (CÁMARA) ---
     st.write("---")
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진")
     st.write("---")
@@ -153,7 +167,9 @@ def formulario():
     if st.button("REGISTRAR"):
         if not cod: st.error("Falta Código"); return
         if cant is None or conf is None: st.error("Faltan Cantidades"); return
-        if cant != conf: st.error(f"❌ ERROR: Cantidades no coinciden ({cant} vs {conf})"); return
+        
+        # VALIDACIÓN: SI NO COINCIDEN, NO DEJA PASAR
+        if cant != conf: st.error(f"❌ ERROR: Las cantidades no coinciden ({cant} vs {conf})"); return
 
         if acc == "ENTRADA":
             if not ubi: st.error("Falta Ubicación"); return
@@ -165,7 +181,7 @@ def formulario():
             if not dest: st.error("Falta Quien Retira"); return
             val = -cant
             
-        # SUBIR FOTO A FIREBASE STORAGE
+        # SUBIR FOTO A FIREBASE Y OBTENER LINK
         url_foto = "NO FOTO"
         if foto:
             try:
@@ -173,8 +189,8 @@ def formulario():
                 nombre_archivo = f"evidencias/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{cod}.jpg"
                 blob = bucket.blob(nombre_archivo)
                 blob.upload_from_file(foto, content_type='image/jpeg')
-                blob.make_public() # Hace el link accesible para el Excel
-                url_foto = blob.public_url
+                blob.make_public() 
+                url_foto = blob.public_url # ESTE LINK VA AL EXCEL
             except Exception as e:
                 st.error(f"Error subiendo foto: {e}")
                 url_foto = "ERROR FOTO"
@@ -257,12 +273,15 @@ def admin():
                 if p==p2: db.collection("USUARIOS").document("YAKO").update({"nombre": n, "clave": p}); st.success("OK")
 
     with t5:
+        # ACTUALIZACIÓN: Ver nombre real en Panel Yako
         if st.session_state.user == "YAKO":
             us = []; u_ids = []
             for u in db.collection("USUARIOS").stream():
                 if u.id != "YAKO":
                     d = u.to_dict()
-                    us.append(f"{u.id} - {d.get('nombre_personal', 'N/A')} ({d.get('estado', '')})")
+                    nombre = d.get('nombre_personal', 'SIN NOMBRE')
+                    estado = d.get('estado', '')
+                    us.append(f"{u.id} - {nombre} ({estado})")
                     u_ids.append(u.id)
             if us:
                 s = st.selectbox("Usuario", us)
