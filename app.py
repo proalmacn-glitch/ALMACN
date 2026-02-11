@@ -12,7 +12,6 @@ st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered
 # --- CONEXIÓN FIREBASE + FOTOS (STORAGE) ---
 if not firebase_admin._apps:
     try:
-        # TU BUCKET PARA LAS FOTOS
         bucket_name = 'almacnn.firebasestorage.app'
         
         cred_path = "Key.json"
@@ -37,7 +36,6 @@ st.markdown("""
     .stButton>button:hover { background-color: red; color: white; }
     div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label { color: yellow !important; font-size: 16px !important; }
     .stTextInput>div>div>input, .stNumberInput>div>div>input { text-align: center; }
-    /* NÚMEROS GIGANTES */
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
     div[data-testid="stMetric"] { display: flex; flex-direction: column; align-items: center; background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
@@ -54,34 +52,64 @@ def login():
     st.title("LOGIN / 로그인")
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     
-    user = st.text_input("Usuario / 사용자").upper().strip()
+    # El usuario entra con su NOMBRE NUEVO directamente
+    user_input = st.text_input("Usuario / 사용자").upper().strip()
     password = st.text_input("Clave / 비밀번호", type="password").strip()
     
     col1, col2 = st.columns(2)
     if col1.button("ENTRAR / 입장"):
-        doc = db.collection("USUARIOS").document(user).get()
+        # LÓGICA INTELIGENTE: BUSCAR POR NOMBRE NUEVO O ID ORIGINAL
+        data = None
+        doc_id = None 
+
+        # 1. ¿Es el ID original (USUARIO1)?
+        doc = db.collection("USUARIOS").document(user_input).get()
         if doc.exists:
             data = doc.to_dict()
+            doc_id = user_input
+        else:
+            # 2. ¿Es el NOMBRE NUEVO (JUAN PEREZ)?
+            # Esto permite entrar DIRECTAMENTE con el nuevo nombre
+            query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
+            for d in query:
+                data = d.to_dict()
+                doc_id = d.id
+                break 
+
+        if data:
+            # Verificar contraseña (ya sea la vieja o la nueva)
             if str(data.get('clave')) == password:
-                if user == "YAKO":
+                # Nombre para mostrar en el menú
+                nombre_mostrar = data.get('nombre_personal', doc_id)
+
+                if doc_id == "YAKO":
                     st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
                 elif data.get('estado') == "ACTIVO":
                     if data.get('cambio_pendiente', False):
-                        st.session_state.temp_user = user; st.session_state.page = 'cambio_clave'; st.rerun()
+                        st.session_state.temp_user = doc_id 
+                        st.session_state.page = 'cambio_clave'
+                        st.rerun()
                     else:
-                        st.session_state.user = data.get('nombre_personal', user); st.session_state.page = 'menu'; st.rerun()
+                        st.session_state.user = nombre_mostrar
+                        st.session_state.page = 'menu'
+                        st.rerun()
                 else: st.warning("Cuenta Pendiente / 계정 대기 중")
             else: st.error("Clave Incorrecta / 비밀번호 오류")
         else: st.error("Usuario no existe / 사용자 없음")
 
     if col2.button("REGISTRARSE / 등록"):
-        animales = ["LEON", "TIGRE", "AGUILA", "LOBO", "OSO", "TORO", "GATO", "PERRO", "PUMA", "ZORRO", "HALCON", "DRAGON", "COBRA", "PANTERA", "TIBURON", "BUFALO", "RINOCERONTE", "ELEFANTE", "JAGUAR", "FENIX"]
+        # LISTA DE ANIMALES CORTOS (Tu petición)
+        animales_cortos = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
+        
         n = len(list(db.collection("USUARIOS").stream()))
         u = f"USUARIO{n+1}"
-        an = random.choice(animales)
+        
+        an = random.choice(animales_cortos)
         num = random.randint(10, 99)
-        p = f"{an}{num}"
-        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "cambio_pendiente": True})
+        p = f"{an}{num}" # Ejemplo: PUMA55, GATO20
+        
+        # Guardamos el nombre inicial igual al ID
+        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
         st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
 
     st.divider()
@@ -96,28 +124,40 @@ def login():
         if st.button("SALIDA HOLDERS / 홀더 출고"): 
             st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "holders")
 
-    st.write("") # Espacio
-    st.write("") # Espacio
+    st.write("") 
 
-    # --- BOTÓN BUSCAR (TEXTO CORREGIDO) ---
+    # --- BOTÓN BUSCAR ---
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"):
         st.session_state.page = 'buscar'
         st.rerun()
 
 def cambio_clave():
     st.title("PRIMER INICIO / 첫 로그인")
-    nn = st.text_input("Nuevo Nombre / 새 이름").upper()
-    nc = st.text_input("Nueva Clave / 새 비밀번호", type="password")
-    nc2 = st.text_input("Confirmar Clave / 비밀번호 확인", type="password")
-    if st.button("GUARDAR / 저장"):
+    st.info("Crea tu Usuario y Contraseña personal")
+    
+    nn = st.text_input("Nuevo Usuario (Nombre) / 새 사용자 이름").upper().strip()
+    nc = st.text_input("Nueva Contraseña / 새 비밀번호", type="password")
+    nc2 = st.text_input("Confirmar Contraseña / 비밀번호 확인", type="password")
+    
+    if st.button("GUARDAR Y ENTRAR / 저장"):
         if nc == nc2 and nn and nc:
-            db.collection("USUARIOS").document(st.session_state.temp_user).update({"nombre_personal": nn, "clave": nc, "cambio_pendiente": False})
-            st.session_state.user = nn; st.session_state.es_invitado = False; st.session_state.page = 'menu'; st.rerun()
-        else: st.error("Error: Claves no coinciden / 오류: 비밀번호 불일치")
+            # AQUÍ OCURRE LA MAGIA:
+            # Actualizamos la base de datos con el nuevo nombre y clave.
+            # A partir de ahora, el login buscará este nombre.
+            db.collection("USUARIOS").document(st.session_state.temp_user).update({
+                "nombre_personal": nn, 
+                "clave": nc, 
+                "cambio_pendiente": False
+            })
+            st.session_state.user = nn
+            st.session_state.es_invitado = False
+            st.session_state.page = 'menu'
+            st.rerun()
+        else: st.error("Error: Claves no coinciden o campos vacíos")
 
 def menu():
     st.title("MENÚ / 메뉴")
-    st.info(f"USUARIO / 사용자: {st.session_state.user}")
+    st.info(f"HOLA: {st.session_state.user}")
     
     if st.session_state.user == "YAKO":
         pend = len(list(db.collection("USUARIOS").where("estado", "==", "PENDIENTE").stream()))
