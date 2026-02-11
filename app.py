@@ -57,10 +57,12 @@ def login():
     col1, col2 = st.columns(2)
     if col1.button("ENTRAR / 입장"):
         data = None; doc_id = None 
+        # 1. Buscar por ID
         doc = db.collection("USUARIOS").document(user_input).get()
         if doc.exists:
             data = doc.to_dict(); doc_id = user_input
         else:
+            # 2. Buscar por NOMBRE
             query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
             for d in query: data = d.to_dict(); doc_id = d.id; break 
 
@@ -97,10 +99,10 @@ def login():
     st.write("") 
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
-    # --- AQUI ESTA TU GIF ANIMADO ---
+    # GIF ANIMADO
     st.write("")
     st.write("")
-    c_img1, c_img2, c_img3 = st.columns([1, 2, 1]) # Columnas para centrar
+    c_img1, c_img2, c_img3 = st.columns([1, 2, 1]) 
     with c_img2:
         st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
@@ -117,7 +119,9 @@ def cambio_clave():
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"USUARIO / 사용자: {st.session_state.user}")
+    
+    # --- CAMBIO REALIZADO: HOLA ---
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
     if st.session_state.user == "YAKO":
         pend = len(list(db.collection("USUARIOS").where("estado", "==", "PENDIENTE").stream()))
@@ -218,25 +222,30 @@ def admin():
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        col = st.selectbox("Cat", ["materiales", "holders"]); c = st.text_input("Código").upper()
-        if st.button("BORRAR"):
-            for d in db.collection(col).where("item", "==", c).stream(): db.collection(col).document(d.id).delete()
-            st.success("Borrado")
+        col = st.selectbox("Categoría / 카테고리", ["materiales", "holders"])
+        c = st.text_input("Código a Borrar / 삭제할 코드").upper()
+        # Se agrega KEY para evitar duplicados
+        if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
+            docs = db.collection(col).where("item", "==", c).stream()
+            count = 0
+            for d in docs: db.collection(col).document(d.id).delete(); count+=1
+            if count > 0: st.success("Borrado / 삭제됨")
+            else: st.warning("No encontrado / 찾을 수 없음")
 
     with t2:
-        ce = st.selectbox("Descargar", ["materiales", "holders"])
-        if st.button("GENERAR EXCEL"):
+        ce = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
+        if st.button("GENERAR EXCEL / 엑셀 생성", key="btn_excel"):
             data = []
             for d in db.collection(ce).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
                 data.append({"FECHA": dt.get('fecha', ''), "REGISTRADO": dt.get('registrado_por', ''), "ITEM": dt.get('item', ''), "CANT": q, "TIPO": "ENTRADA" if q>=0 else "SALIDA", "UBI": dt.get('ubicacion', ''), "SOLICITA": dt.get('solicitante', ''), "FOTO": dt.get('foto_url', 'NO')})
             if data:
                 df = pd.DataFrame(data); csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("DESCARGAR CSV", csv, "reporte.csv", "text/csv")
+                st.download_button("DESCARGAR CSV / 다운로드", csv, "reporte.csv", "text/csv")
 
     with t3:
         cat_st = st.selectbox("Cat", ["materiales", "holders"], key="mas"); txt = st.text_area("ID CANT UBI")
-        if st.button("CARGAR"):
+        if st.button("CARGAR", key="btn_cargar"):
             for l in txt.split('\n'):
                 p = l.replace('\t', ' ').split()
                 if len(p)>=3: db.collection(cat_st).add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": st.session_state.user, "tipo": "MASIVA"})
@@ -245,7 +254,7 @@ def admin():
     with t4:
         if st.session_state.user == "YAKO":
             n = st.text_input("Nombre"); p = st.text_input("Clave", type="password"); p2 = st.text_input("Conf", type="password")
-            if st.button("ACTUALIZAR"):
+            if st.button("ACTUALIZAR", key="btn_update_yako"):
                 if nc==nc2 and nn: db.collection("USUARIOS").document("YAKO").update({"nombre": n, "clave": p}); st.success("OK")
 
     with t5:
@@ -256,11 +265,21 @@ def admin():
                     d = u.to_dict(); nombre = d.get('nombre_personal', 'SIN NOMBRE'); estado = d.get('estado', '')
                     us.append(f"{u.id} - {nombre} ({estado})"); u_ids.append(u.id)
             if us:
-                s = st.selectbox("Usuario", us); sid = u_ids[us.index(s)]; c1, c2 = st.columns(2)
-                if c1.button("ACTIVAR"): db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"}); st.rerun()
-                if c2.button("BORRAR"): db.collection("USUARIOS").document(sid).delete(); st.rerun()
+                s = st.selectbox("Usuario / 사용자", us)
+                sid = u_ids[us.index(s)]
+                c1, c2 = st.columns(2)
+                # AQUI ESTABA EL ERROR: AGREGUÉ KEYS ÚNICAS
+                if c1.button("ACTIVAR / 활성화", key="btn_activar_user"): 
+                    db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"})
+                    st.success("OK")
+                    st.rerun()
+                if c2.button("BORRAR / 삭제", key="btn_borrar_user"): 
+                    db.collection("USUARIOS").document(sid).delete()
+                    st.success("Eliminado")
+                    st.rerun()
+            else: st.info("No hay usuarios / 사용자 없음")
 
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'registro': registro()
