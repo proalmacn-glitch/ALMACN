@@ -99,7 +99,7 @@ def login():
     st.write("") 
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
-    # GIF ANIMADO MONTACARGAS
+    # GIF ANIMADO MONTACARGAS (PRIMERO)
     st.write("")
     st.write("")
     c_img1, c_img2, c_img3 = st.columns([1, 2, 1]) 
@@ -137,8 +137,7 @@ def menu():
         
     st.divider()
 
-    # --- NUEVO DISEÑO INFERIOR CON GIF ---
-    # Usamos columnas para poner los botones a la izquierda y el GIF a la derecha
+    # --- DISEÑO INFERIOR CON TU NUEVO GIF ---
     col_botones, col_gif = st.columns([1.5, 1])
 
     with col_botones:
@@ -148,9 +147,8 @@ def menu():
         if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
     
     with col_gif:
-        # GIF DEL BRAZO ROBÓTICO AMARILLO
-        # Nota: Uso un enlace público de Giphy que se parece a tu imagen.
-        st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHd4YzV6eHNuZ3lzbzN5d3QzZnQ4a3B2aGt4MTl5aHl6aWx6eXU5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/3o7TKSOTX8sF1f3Lyg/giphy.gif", use_column_width=True)
+        # NUEVO GIF SOLICITADO
+        st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHV3YjNoYXFxYXA4MDl5Z3NyYWpkM2w5MDR0dnE3YWJjMGVuaTNpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/jTYy5WWGYTBp610Ddd/giphy.gif", use_column_width=True)
 
 def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat; st.session_state.page = 'form'; st.rerun()
@@ -222,7 +220,7 @@ def buscar():
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
 
-    # --- FUNCIÓN SOLO PARA YAKO: EDITAR STOCK ---
+    # --- FUNCIÓN SOLO PARA YAKO: EDITAR STOCK (ESTÁ AQUÍ) ---
     if st.session_state.user == "YAKO" and c:
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
         col_adj1, col_adj2 = st.columns(2)
@@ -247,7 +245,8 @@ def buscar():
                     "tipo": "AJUSTE"
                 })
                 st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
-                st.rerun() # Recargar para ver el stock nuevo
+                # Truco para recargar y ver el stock actualizado
+                st.rerun() 
             else:
                 st.warning("La cantidad es 0.")
         st.divider()
@@ -262,7 +261,7 @@ def admin():
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        col = st.selectbox("Cat", ["materiales", "holders"]); c = st.text_input("Código").upper()
+        col = st.selectbox("Categoría / 카테고리", ["materiales", "holders"]); c = st.text_input("Código a Borrar / 삭제할 코드").upper()
         if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
             docs = db.collection(col).where("item", "==", c).stream()
             count = 0
@@ -276,9 +275,7 @@ def admin():
             data = []
             for d in db.collection(ce).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
-                # Detectar si es un ajuste manual
                 tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
-                
                 data.append({"FECHA": dt.get('fecha', ''), "REGISTRADO": dt.get('registrado_por', ''), "ITEM": dt.get('item', ''), "CANT": q, "TIPO": tipo_mov, "UBI": dt.get('ubicacion', ''), "SOLICITA": dt.get('solicitante', ''), "FOTO": dt.get('foto_url', 'NO')})
             if data:
                 df = pd.DataFrame(data); csv = df.to_csv(index=False).encode('utf-8')
