@@ -38,6 +38,8 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
     div[data-testid="stMetric"] { display: flex; flex-direction: column; align-items: center; background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    /* Estilo para el panel de ajuste de Yako */
+    .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -57,12 +59,10 @@ def login():
     col1, col2 = st.columns(2)
     if col1.button("ENTRAR / 입장"):
         data = None; doc_id = None 
-        # 1. Buscar por ID
         doc = db.collection("USUARIOS").document(user_input).get()
         if doc.exists:
             data = doc.to_dict(); doc_id = user_input
         else:
-            # 2. Buscar por NOMBRE
             query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
             for d in query: data = d.to_dict(); doc_id = d.id; break 
 
@@ -99,7 +99,7 @@ def login():
     st.write("") 
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
-    # GIF ANIMADO
+    # GIF ANIMADO MONTACARGAS
     st.write("")
     st.write("")
     c_img1, c_img2, c_img3 = st.columns([1, 2, 1]) 
@@ -119,8 +119,6 @@ def cambio_clave():
 
 def menu():
     st.title("ALMACÉN / 창고")
-    
-    # --- CAMBIO REALIZADO: HOLA ---
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
     if st.session_state.user == "YAKO":
@@ -138,10 +136,21 @@ def menu():
         if st.button("SALIDA HOL / 홀더 출고"): st.session_state.es_invitado = False; ir("SALIDA", "holders")
         
     st.divider()
-    if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    if st.session_state.user:
-        if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-    if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+
+    # --- NUEVO DISEÑO INFERIOR CON GIF ---
+    # Usamos columnas para poner los botones a la izquierda y el GIF a la derecha
+    col_botones, col_gif = st.columns([1.5, 1])
+
+    with col_botones:
+        if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+        if st.session_state.user:
+            if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
+        if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+    
+    with col_gif:
+        # GIF DEL BRAZO ROBÓTICO AMARILLO
+        # Nota: Uso un enlace público de Giphy que se parece a tu imagen.
+        st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHd4YzV6eHNuZ3lzbzN5d3QzZnQ4a3B2aGt4MTl5aHl6aWx6eXU5ayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/3o7TKSOTX8sF1f3Lyg/giphy.gif", use_column_width=True)
 
 def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat; st.session_state.page = 'form'; st.rerun()
@@ -212,6 +221,37 @@ def buscar():
     c1.metric("STOCK / 재고", s)
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
+
+    # --- FUNCIÓN SOLO PARA YAKO: EDITAR STOCK ---
+    if st.session_state.user == "YAKO" and c:
+        st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
+        col_adj1, col_adj2 = st.columns(2)
+        with col_adj1:
+            target_col = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["materiales", "holders"], key="adj_col")
+        with col_adj2:
+            # Cantidad positiva para sumar, negativa para restar
+            adj_qty = st.number_input("Cantidad a ajustar (+/-) / 조정 수량", step=1, value=0, key="adj_qty")
+        
+        st.caption("Ejemplo: Pon '5' para sumar 5. Pon '-3' para restar 3.")
+        
+        if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
+            if adj_qty != 0:
+                db.collection(target_col).add({
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "item": c,
+                    "cantidad": adj_qty,
+                    "ubicacion": "AJUSTE MANUAL YAKO",
+                    "registrado_por": "YAKO",
+                    "solicitante": "AJUSTE DIRECTO",
+                    "foto_url": "NO FOTO",
+                    "tipo": "AJUSTE"
+                })
+                st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
+                st.rerun() # Recargar para ver el stock nuevo
+            else:
+                st.warning("La cantidad es 0.")
+        st.divider()
+
     if st.button("VOLVER / 돌아가기"):
         if st.session_state.user is None: st.session_state.page = 'login'
         else: st.session_state.page = 'menu'
@@ -222,9 +262,7 @@ def admin():
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        col = st.selectbox("Categoría / 카테고리", ["materiales", "holders"])
-        c = st.text_input("Código a Borrar / 삭제할 코드").upper()
-        # Se agrega KEY para evitar duplicados
+        col = st.selectbox("Cat", ["materiales", "holders"]); c = st.text_input("Código").upper()
         if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
             docs = db.collection(col).where("item", "==", c).stream()
             count = 0
@@ -233,12 +271,15 @@ def admin():
             else: st.warning("No encontrado / 찾을 수 없음")
 
     with t2:
-        ce = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
+        ce = st.selectbox("Descargar", ["materiales", "holders"])
         if st.button("GENERAR EXCEL / 엑셀 생성", key="btn_excel"):
             data = []
             for d in db.collection(ce).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
-                data.append({"FECHA": dt.get('fecha', ''), "REGISTRADO": dt.get('registrado_por', ''), "ITEM": dt.get('item', ''), "CANT": q, "TIPO": "ENTRADA" if q>=0 else "SALIDA", "UBI": dt.get('ubicacion', ''), "SOLICITA": dt.get('solicitante', ''), "FOTO": dt.get('foto_url', 'NO')})
+                # Detectar si es un ajuste manual
+                tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
+                
+                data.append({"FECHA": dt.get('fecha', ''), "REGISTRADO": dt.get('registrado_por', ''), "ITEM": dt.get('item', ''), "CANT": q, "TIPO": tipo_mov, "UBI": dt.get('ubicacion', ''), "SOLICITA": dt.get('solicitante', ''), "FOTO": dt.get('foto_url', 'NO')})
             if data:
                 df = pd.DataFrame(data); csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button("DESCARGAR CSV / 다운로드", csv, "reporte.csv", "text/csv")
@@ -265,18 +306,13 @@ def admin():
                     d = u.to_dict(); nombre = d.get('nombre_personal', 'SIN NOMBRE'); estado = d.get('estado', '')
                     us.append(f"{u.id} - {nombre} ({estado})"); u_ids.append(u.id)
             if us:
-                s = st.selectbox("Usuario / 사용자", us)
+                s = st.selectbox("Usuario", us)
                 sid = u_ids[us.index(s)]
                 c1, c2 = st.columns(2)
-                # AQUI ESTABA EL ERROR: AGREGUÉ KEYS ÚNICAS
                 if c1.button("ACTIVAR / 활성화", key="btn_activar_user"): 
-                    db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"})
-                    st.success("OK")
-                    st.rerun()
+                    db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"}); st.success("OK"); st.rerun()
                 if c2.button("BORRAR / 삭제", key="btn_borrar_user"): 
-                    db.collection("USUARIOS").document(sid).delete()
-                    st.success("Eliminado")
-                    st.rerun()
+                    db.collection("USUARIOS").document(sid).delete(); st.success("Eliminado"); st.rerun()
             else: st.info("No hay usuarios / 사용자 없음")
 
     if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
