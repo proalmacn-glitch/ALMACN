@@ -221,7 +221,9 @@ def buscar():
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
         col_adj1, col_adj2 = st.columns(2)
         with col_adj1:
-            target_col = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["materiales", "holders"], key="adj_col")
+            # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
+            target_sel = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["MATERIALES", "HOLDERS"], key="adj_col")
+            target_col = target_sel.lower()
         with col_adj2:
             adj_qty = st.number_input("Cantidad a ajustar (+/-) / 조정 수량", step=1, value=0, key="adj_qty")
         
@@ -255,7 +257,10 @@ def admin():
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        col = st.selectbox("Categoría / 카테고리", ["materiales", "holders"]); c = st.text_input("Código a Borrar / 삭제할 코드").upper()
+        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
+        col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"]); 
+        col = col_sel.lower()
+        c = st.text_input("Código a Borrar / 삭제할 코드").upper()
         if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
             docs = db.collection(col).where("item", "==", c).stream()
             count = 0
@@ -264,12 +269,13 @@ def admin():
             else: st.warning("No encontrado / 찾을 수 없음")
 
     with t2:
-        ce = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
+        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
+        ce_sel = st.selectbox("Descargar", ["MATERIALES", "HOLDERS"])
+        ce = ce_sel.lower()
         if st.button("GENERAR EXCEL / 엑셀 생성", key="btn_excel"):
             data = []
             for d in db.collection(ce).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
-                # Títulos en Español y Coreano
                 tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
                 
                 data.append({
@@ -285,13 +291,15 @@ def admin():
             
             if data:
                 df = pd.DataFrame(data)
-                # Codificación UTF-8-SIG para que Excel lea bien el Coreano/Español
                 csv = df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("DESCARGAR CSV / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
             else: st.warning("Vacío / 비어 있음")
 
     with t3:
-        cat_st = st.selectbox("Cat", ["materiales", "holders"], key="mas"); txt = st.text_area("ID CANT UBI")
+        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
+        cat_sel = st.selectbox("Cat", ["MATERIALES", "HOLDERS"], key="mas"); 
+        cat_st = cat_sel.lower()
+        txt = st.text_area("ID CANT UBI")
         if st.button("CARGAR", key="btn_cargar"):
             for l in txt.split('\n'):
                 p = l.replace('\t', ' ').split()
