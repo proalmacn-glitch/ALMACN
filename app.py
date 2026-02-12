@@ -99,7 +99,6 @@ def login():
     st.write("") 
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
-    # GIF ANIMADO MONTACARGAS (PRIMERO)
     st.write("")
     st.write("")
     c_img1, c_img2, c_img3 = st.columns([1, 2, 1]) 
@@ -137,7 +136,6 @@ def menu():
         
     st.divider()
 
-    # --- DISEÑO INFERIOR CON TU NUEVO GIF ---
     col_botones, col_gif = st.columns([1.5, 1])
 
     with col_botones:
@@ -147,7 +145,6 @@ def menu():
         if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
     
     with col_gif:
-        # NUEVO GIF SOLICITADO
         st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHV3YjNoYXFxYXA4MDl5Z3NyYWpkM2w5MDR0dnE3YWJjMGVuaTNpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/jTYy5WWGYTBp610Ddd/giphy.gif", use_column_width=True)
 
 def ir(acc, cat):
@@ -220,14 +217,12 @@ def buscar():
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
 
-    # --- FUNCIÓN SOLO PARA YAKO: EDITAR STOCK (ESTÁ AQUÍ) ---
     if st.session_state.user == "YAKO" and c:
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
         col_adj1, col_adj2 = st.columns(2)
         with col_adj1:
             target_col = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["materiales", "holders"], key="adj_col")
         with col_adj2:
-            # Cantidad positiva para sumar, negativa para restar
             adj_qty = st.number_input("Cantidad a ajustar (+/-) / 조정 수량", step=1, value=0, key="adj_qty")
         
         st.caption("Ejemplo: Pon '5' para sumar 5. Pon '-3' para restar 3.")
@@ -245,7 +240,6 @@ def buscar():
                     "tipo": "AJUSTE"
                 })
                 st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
-                # Truco para recargar y ver el stock actualizado
                 st.rerun() 
             else:
                 st.warning("La cantidad es 0.")
@@ -270,16 +264,31 @@ def admin():
             else: st.warning("No encontrado / 찾을 수 없음")
 
     with t2:
-        ce = st.selectbox("Descargar", ["materiales", "holders"])
+        ce = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
         if st.button("GENERAR EXCEL / 엑셀 생성", key="btn_excel"):
             data = []
             for d in db.collection(ce).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
+                # Títulos en Español y Coreano
                 tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
-                data.append({"FECHA": dt.get('fecha', ''), "REGISTRADO": dt.get('registrado_por', ''), "ITEM": dt.get('item', ''), "CANT": q, "TIPO": tipo_mov, "UBI": dt.get('ubicacion', ''), "SOLICITA": dt.get('solicitante', ''), "FOTO": dt.get('foto_url', 'NO')})
+                
+                data.append({
+                    "FECHA / 날짜": dt.get('fecha', ''), 
+                    "REGISTRADO POR / 등록자": dt.get('registrado_por', ''), 
+                    "ITEM / 항목": dt.get('item', ''), 
+                    "CANTIDAD / 수량": q, 
+                    "TIPO / 유형": tipo_mov, 
+                    "UBICACIÓN / 위치": dt.get('ubicacion', ''), 
+                    "SOLICITANTE / 요청자": dt.get('solicitante', ''), 
+                    "FOTO / 사진 (LINK)": dt.get('foto_url', 'NO')
+                })
+            
             if data:
-                df = pd.DataFrame(data); csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("DESCARGAR CSV / 다운로드", csv, "reporte.csv", "text/csv")
+                df = pd.DataFrame(data)
+                # Codificación UTF-8-SIG para que Excel lea bien el Coreano/Español
+                csv = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("DESCARGAR CSV / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+            else: st.warning("Vacío / 비어 있음")
 
     with t3:
         cat_st = st.selectbox("Cat", ["materiales", "holders"], key="mas"); txt = st.text_area("ID CANT UBI")
