@@ -33,7 +33,7 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label { color: yellow !important; font-size: 16px !important; }
+    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label, div[data-testid="stTextArea"] label { color: yellow !important; font-size: 16px !important; }
     .stTextInput>div>div>input, .stNumberInput>div>div>input { text-align: center; }
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
@@ -221,13 +221,12 @@ def buscar():
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
         col_adj1, col_adj2 = st.columns(2)
         with col_adj1:
-            # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
             target_sel = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["MATERIALES", "HOLDERS"], key="adj_col")
             target_col = target_sel.lower()
         with col_adj2:
             adj_qty = st.number_input("Cantidad a ajustar (+/-) / 조정 수량", step=1, value=0, key="adj_qty")
         
-        st.caption("Ejemplo: Pon '5' para sumar 5. Pon '-3' para restar 3.")
+        st.caption("Ejemplo: Pon '5' para sumar 5. Pon '-3' para restar 3. / 예: 더하려면 5, 빼려면 -3 입력")
         
         if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
             if adj_qty != 0:
@@ -241,10 +240,10 @@ def buscar():
                     "foto_url": "NO FOTO",
                     "tipo": "AJUSTE"
                 })
-                st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
+                st.success(f"Ajuste de {adj_qty} aplicado a {c} / 조정 완료.")
                 st.rerun() 
             else:
-                st.warning("La cantidad es 0.")
+                st.warning("La cantidad es 0 / 수량이 0입니다.")
         st.divider()
 
     if st.button("VOLVER / 돌아가기"):
@@ -257,7 +256,6 @@ def admin():
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
         col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"]); 
         col = col_sel.lower()
         c = st.text_input("Código a Borrar / 삭제할 코드").upper()
@@ -269,8 +267,7 @@ def admin():
             else: st.warning("No encontrado / 찾을 수 없음")
 
     with t2:
-        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
-        ce_sel = st.selectbox("Descargar", ["MATERIALES", "HOLDERS"])
+        ce_sel = st.selectbox("Descargar / 다운로드", ["MATERIALES", "HOLDERS"])
         ce = ce_sel.lower()
         if st.button("GENERAR EXCEL / 엑셀 생성", key="btn_excel"):
             data = []
@@ -296,21 +293,22 @@ def admin():
             else: st.warning("Vacío / 비어 있음")
 
     with t3:
-        # CAMBIO: MAYUSCULAS VISUAL, MINUSCULA INTERNA
-        cat_sel = st.selectbox("Cat", ["MATERIALES", "HOLDERS"], key="mas"); 
+        cat_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"], key="mas"); 
         cat_st = cat_sel.lower()
-        txt = st.text_area("ID CANT UBI")
-        if st.button("CARGAR", key="btn_cargar"):
+        txt = st.text_area("Formato: ID CANT UBI / 형식: ID 수량 위치")
+        if st.button("CARGAR LISTA / 목록 업로드", key="btn_cargar"):
             for l in txt.split('\n'):
                 p = l.replace('\t', ' ').split()
                 if len(p)>=3: db.collection(cat_st).add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": st.session_state.user, "tipo": "MASIVA"})
-            st.success("Cargado")
+            st.success("Cargado / 완료")
 
     with t4:
         if st.session_state.user == "YAKO":
-            n = st.text_input("Nombre"); p = st.text_input("Clave", type="password"); p2 = st.text_input("Conf", type="password")
-            if st.button("ACTUALIZAR", key="btn_update_yako"):
-                if nc==nc2 and nn: db.collection("USUARIOS").document("YAKO").update({"nombre": n, "clave": p}); st.success("OK")
+            n = st.text_input("Nuevo Nombre / 새 이름"); 
+            p = st.text_input("Nueva Clave / 새 비밀번호", type="password"); 
+            p2 = st.text_input("Confirmar / 확인", type="password")
+            if st.button("ACTUALIZAR / 업데이트", key="btn_update_yako"):
+                if p==p2 and n: db.collection("USUARIOS").document("YAKO").update({"nombre": n, "clave": p}); st.success("OK")
 
     with t5:
         if st.session_state.user == "YAKO":
@@ -320,13 +318,13 @@ def admin():
                     d = u.to_dict(); nombre = d.get('nombre_personal', 'SIN NOMBRE'); estado = d.get('estado', '')
                     us.append(f"{u.id} - {nombre} ({estado})"); u_ids.append(u.id)
             if us:
-                s = st.selectbox("Usuario", us)
+                s = st.selectbox("Usuario / 사용자", us)
                 sid = u_ids[us.index(s)]
                 c1, c2 = st.columns(2)
                 if c1.button("ACTIVAR / 활성화", key="btn_activar_user"): 
                     db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"}); st.success("OK"); st.rerun()
                 if c2.button("BORRAR / 삭제", key="btn_borrar_user"): 
-                    db.collection("USUARIOS").document(sid).delete(); st.success("Eliminado"); st.rerun()
+                    db.collection("USUARIOS").document(sid).delete(); st.success("Eliminado / 삭제됨"); st.rerun()
             else: st.info("No hay usuarios / 사용자 없음")
 
     if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
