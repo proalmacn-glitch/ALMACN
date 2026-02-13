@@ -161,8 +161,22 @@ def formulario():
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
     conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복")
 
-    if acc == "ENTRADA": ubi = st.text_input("UBICACIÓN / 위치").upper().strip(); dest = "ALMACEN"
-    else: ubi = "SALIDA / 출고"; dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)").upper().strip()
+    # VARIABLES ESPECÍFICAS SEGÚN ENTRADA O SALIDA
+    sub_categoria = "---" # Por defecto vacío
+
+    if acc == "ENTRADA":
+        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
+        
+        # --- NUEVO CAMPO OPCIONAL ---
+        st.write("---")
+        opciones_cat = ["---", "ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
+        sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat)
+        st.write("---")
+        
+        dest = "ALMACEN"
+    else:
+        ubi = "SALIDA / 출고"
+        dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)").upper().strip()
     
     st.write("---")
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진")
@@ -193,7 +207,21 @@ def formulario():
                 blob.make_public(); url_foto = blob.public_url
             except Exception as e: st.error(f"Error foto: {e}"); url_foto = "ERROR"
 
-        db.collection(st.session_state.categoria).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod, "cantidad": val, "ubicacion": ubi, "registrado_por": st.session_state.user, "solicitante": dest, "foto_url": url_foto})
+        # GUARDAR EN BASE DE DATOS (Incluyendo la categoría si existe)
+        datos_guardar = {
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+            "item": cod, 
+            "cantidad": val, 
+            "ubicacion": ubi, 
+            "registrado_por": st.session_state.user, 
+            "solicitante": dest, 
+            "foto_url": url_foto
+        }
+        
+        if sub_categoria != "---":
+            datos_guardar["categoria_detalle"] = sub_categoria
+
+        db.collection(st.session_state.categoria).add(datos_guardar)
         st.success("EXITO / 성공")
         
     if st.button("VOLVER / 돌아가기"): 
@@ -281,6 +309,7 @@ def admin():
                     "ITEM / 항목": dt.get('item', ''), 
                     "CANTIDAD / 수량": q, 
                     "TIPO / 유형": tipo_mov, 
+                    "CATEGORÍA / 카테고리": dt.get('categoria_detalle', '---'), # NUEVA COLUMNA
                     "UBICACIÓN / 위치": dt.get('ubicacion', ''), 
                     "SOLICITANTE / 요청자": dt.get('solicitante', ''), 
                     "FOTO / 사진 (LINK)": dt.get('foto_url', 'NO')
