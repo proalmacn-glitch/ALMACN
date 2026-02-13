@@ -56,55 +56,50 @@ def login():
     user_input = st.text_input("Usuario / 사용자").upper().strip()
     password = st.text_input("Clave / 비밀번호", type="password").strip()
     
-    # --- CAMBIO DE ALINEACIÓN 1: Usamos 3 columnas con un pequeño espacio en medio ---
-    # Esto empuja los botones hacia los extremos exteriores.
-    col1, col_sep1, col2 = st.columns([1, 0.05, 1]) 
-    
-    with col1:
-        if st.button("ENTRAR / 입장"):
-            data = None; doc_id = None 
-            doc = db.collection("USUARIOS").document(user_input).get()
-            if doc.exists:
-                data = doc.to_dict(); doc_id = user_input
-            else:
-                query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
-                for d in query: data = d.to_dict(); doc_id = d.id; break 
+    # --- REGRESAMOS A COLUMNAS NORMALES (SIN ESPACIADORES) ---
+    col1, col2 = st.columns(2)
+    if col1.button("ENTRAR / 입장"):
+        data = None; doc_id = None 
+        doc = db.collection("USUARIOS").document(user_input).get()
+        if doc.exists:
+            data = doc.to_dict(); doc_id = user_input
+        else:
+            query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
+            for d in query: data = d.to_dict(); doc_id = d.id; break 
 
-            if data:
-                if str(data.get('clave')) == password:
-                    nombre_mostrar = data.get('nombre_personal', doc_id)
-                    if doc_id == "YAKO":
-                        st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
-                    elif data.get('estado') == "ACTIVO":
-                        if data.get('cambio_pendiente', False):
-                            st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
-                        else:
-                            st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
-                    else: st.warning("Cuenta Pendiente / 계정 대기 중")
-                else: st.error("Clave Incorrecta / 비밀번호 오류")
-            else: st.error("Usuario no existe / 사용자 없음")
+        if data:
+            if str(data.get('clave')) == password:
+                nombre_mostrar = data.get('nombre_personal', doc_id)
+                if doc_id == "YAKO":
+                    st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
+                elif data.get('estado') == "ACTIVO":
+                    if data.get('cambio_pendiente', False):
+                        st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
+                    else:
+                        st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
+                else: st.warning("Cuenta Pendiente / 계정 대기 중")
+            else: st.error("Clave Incorrecta / 비밀번호 오류")
+        else: st.error("Usuario no existe / 사용자 없음")
 
-    with col2:
-        if st.button("REGISTRARSE / 등록"):
-            animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
-            n = len(list(db.collection("USUARIOS").stream()))
-            u = f"USUARIO{n+1}"
-            p = f"{random.choice(animales)}{random.randint(10, 99)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
-            st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
+    if col2.button("REGISTRARSE / 등록"):
+        animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
+        n = len(list(db.collection("USUARIOS").stream()))
+        u = f"USUARIO{n+1}"
+        p = f"{random.choice(animales)}{random.randint(10, 99)}"
+        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
+        st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
 
     st.divider()
     st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
     
-    # --- CAMBIO DE ALINEACIÓN 2: Lo mismo para la salida rápida ---
-    c1, c_sep2, c2 = st.columns([1, 0.05, 1])
+    # --- REGRESAMOS A COLUMNAS NORMALES ---
+    c1, c2 = st.columns(2)
     with c1:
         if st.button("SALIDA MATERIALES / 자재 출고"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "materiales")
     with c2:
         if st.button("SALIDA HOLDERS / 홀더 출고"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "holders")
     
     st.write("") 
-    # El botón BUSCAR ya ocupa todo el ancho por defecto al no estar en columnas.
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
     st.write("")
@@ -132,7 +127,6 @@ def menu():
         pend = len(list(db.collection("USUARIOS").where("estado", "==", "PENDIENTE").stream()))
         if pend > 0: st.error(f"⚠ {pend} USUARIOS PENDIENTES / 대기 중인 사용자")
 
-    # El menú ya tiene una alineación correcta de 2 columnas bien separadas.
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
@@ -226,7 +220,6 @@ def formulario():
             "foto_url": url_foto
         }
         
-        # SI ELIGIERON ALGO (NO ES NONE), SE GUARDA
         if sub_categoria:
             datos_guardar["categoria_detalle"] = sub_categoria
 
@@ -396,3 +389,4 @@ elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'admin': admin()
+
