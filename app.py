@@ -56,7 +56,6 @@ def login():
     user_input = st.text_input("Usuario / 사용자").upper().strip()
     password = st.text_input("Clave / 비밀번호", type="password").strip()
     
-    # --- REGRESAMOS A COLUMNAS NORMALES (SIN ESPACIADORES) ---
     col1, col2 = st.columns(2)
     if col1.button("ENTRAR / 입장"):
         data = None; doc_id = None 
@@ -91,8 +90,6 @@ def login():
 
     st.divider()
     st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
-    
-    # --- REGRESAMOS A COLUMNAS NORMALES ---
     c1, c2 = st.columns(2)
     with c1:
         if st.button("SALIDA MATERIALES / 자재 출고"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "materiales")
@@ -164,7 +161,6 @@ def formulario():
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
     conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복")
 
-    # VARIABLES ESPECÍFICAS SEGÚN ENTRADA O SALIDA
     sub_categoria = None
 
     if acc == "ENTRADA":
@@ -209,7 +205,6 @@ def formulario():
                 blob.make_public(); url_foto = blob.public_url
             except Exception as e: st.error(f"Error foto: {e}"); url_foto = "ERROR"
 
-        # GUARDAR EN BASE DE DATOS
         datos_guardar = {
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
             "item": cod, 
@@ -235,12 +230,23 @@ def buscar():
     st.header("BUSCAR / 검색")
     c = st.text_input("ID / CÓDIGO / 코드").upper()
     s = 0; u_list = set()
+    
+    # --- AUTOMATIZACIÓN DE COLECCIÓN ---
+    # Variable para guardar donde se encontró
+    coleccion_detectada = "MATERIALES" # Por defecto
+    
     if c:
         for col in ["materiales", "holders"]:
-            for d in db.collection(col).where("item", "==", c).stream():
+            docs = list(db.collection(col).where("item", "==", c).stream())
+            # Si encontramos documentos en esta colección, actualizamos la detección
+            if len(docs) > 0:
+                coleccion_detectada = col.upper() # "MATERIALES" o "HOLDERS"
+                
+            for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
                 if "SALIDA" not in l and l != "": u_list.add(l)
+    
     st.divider()
     c1, c2 = st.columns(2)
     c1.metric("STOCK / 재고", s)
@@ -254,9 +260,14 @@ def buscar():
         # 1. AJUSTE DE STOCK
         st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
         col_adj1, col_adj2 = st.columns(2)
+        
         with col_adj1:
-            target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], key="adj_col")
+            # Determinamos el índice por defecto según lo detectado
+            idx_def = 0 if coleccion_detectada == "MATERIALES" else 1
+            
+            target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, key="adj_col")
             target_col = target_sel.lower()
+            
         with col_adj2:
             adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
         
@@ -389,4 +400,3 @@ elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'admin': admin()
-
