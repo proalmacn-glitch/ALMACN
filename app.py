@@ -162,20 +162,20 @@ def formulario():
     conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복")
 
     # VARIABLES ESPECÍFICAS SEGÚN ENTRADA O SALIDA
-    sub_categoria = "---" 
+    sub_categoria = None
 
     if acc == "ENTRADA":
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         
-        # --- AQUÍ ESTÁ LA LÓGICA: SOLO EN ENTRADA ---
+        # --- CORRECCIÓN: SIN GUIONES ---
         st.write("---")
-        opciones_cat = ["---", "ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
-        sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat)
+        opciones_cat = ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
+        # index=None hace que empiece vacío/placeholder
+        sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat, index=None, placeholder="Seleccionar / 선택")
         st.write("---")
         
         dest = "ALMACEN"
     else:
-        # EN SALIDA NO APARECE LA CATEGORÍA
         ubi = "SALIDA / 출고"
         dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)").upper().strip()
     
@@ -219,8 +219,8 @@ def formulario():
             "foto_url": url_foto
         }
         
-        # SOLO GUARDAMOS LA CATEGORÍA SI SE SELECCIONÓ ALGO
-        if sub_categoria != "---":
+        # SI ELIGIERON ALGO (NO ES NONE), SE GUARDA
+        if sub_categoria:
             datos_guardar["categoria_detalle"] = sub_categoria
 
         db.collection(st.session_state.categoria).add(datos_guardar)
