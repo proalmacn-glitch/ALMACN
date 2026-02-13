@@ -31,31 +31,14 @@ st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
     h1, h2, h3 { color: red !important; text-align: center; }
-    
-    /* Botones */
-    .stButton>button { 
-        background-color: white; 
-        color: black; 
-        border-radius: 5px; 
-        width: 100%; 
-        font-weight: bold; 
-        border: 2px solid red; 
-    }
+    .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    
-    /* Inputs */
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label, div[data-testid="stTextArea"] label { 
-        color: yellow !important; 
-        font-size: 16px !important;
-    }
+    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stCameraInput"] label, div[data-testid="stTextArea"] label { color: yellow !important; font-size: 16px !important; }
     .stTextInput>div>div>input, .stNumberInput>div>div>input { text-align: center; }
-    
-    /* Datos Gigantes */
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
     div[data-testid="stMetric"] { display: flex; flex-direction: column; align-items: center; background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
-    
-    /* Panel Yako */
+    /* Estilo para el panel de ajuste de Yako */
     .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; }
     </style>
     """, unsafe_allow_html=True)
@@ -70,57 +53,45 @@ def login():
     st.title("LOGIN / 로그인")
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     
-    st.write("")
-    st.write("")
-
-    # --- CENTRADO DEL LOGIN ---
-    # Usamos 3 columnas: [Espacio Vacío] [CONTENIDO CENTRADO] [Espacio Vacío]
-    c_left, c_center, c_right = st.columns([1, 2, 1]) 
+    # --- LOGIN NORMAL (SIN CENTRADO FORZADO) ---
+    user_input = st.text_input("Usuario / 사용자").upper().strip()
+    password = st.text_input("Clave / 비밀번호", type="password").strip()
     
-    with c_center:
-        user_input = st.text_input("Usuario / 사용자").upper().strip()
-        password = st.text_input("Clave / 비밀번호", type="password").strip()
-        
-        st.write("") # Espacio
-        
-        # Botones dentro de la columna central
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("ENTRAR / 입장"):
-                data = None; doc_id = None 
-                doc = db.collection("USUARIOS").document(user_input).get()
-                if doc.exists:
-                    data = doc.to_dict(); doc_id = user_input
-                else:
-                    query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
-                    for d in query: data = d.to_dict(); doc_id = d.id; break 
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("ENTRAR / 입장"):
+            data = None; doc_id = None 
+            doc = db.collection("USUARIOS").document(user_input).get()
+            if doc.exists:
+                data = doc.to_dict(); doc_id = user_input
+            else:
+                query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
+                for d in query: data = d.to_dict(); doc_id = d.id; break 
 
-                if data:
-                    if str(data.get('clave')) == password:
-                        nombre_mostrar = data.get('nombre_personal', doc_id)
-                        if doc_id == "YAKO":
-                            st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
-                        elif data.get('estado') == "ACTIVO":
-                            if data.get('cambio_pendiente', False):
-                                st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
-                            else:
-                                st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
-                        else: st.warning("Cuenta Pendiente / 계정 대기 중")
-                    else: st.error("Clave Incorrecta / 비밀번호 오류")
-                else: st.error("Usuario no existe / 사용자 없음")
+            if data:
+                if str(data.get('clave')) == password:
+                    nombre_mostrar = data.get('nombre_personal', doc_id)
+                    if doc_id == "YAKO":
+                        st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
+                    elif data.get('estado') == "ACTIVO":
+                        if data.get('cambio_pendiente', False):
+                            st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
+                        else:
+                            st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
+                    else: st.warning("Cuenta Pendiente / 계정 대기 중")
+                else: st.error("Clave Incorrecta / 비밀번호 오류")
+            else: st.error("Usuario no existe / 사용자 없음")
 
-        with col2:
-            if st.button("REGISTRARSE / 등록"):
-                animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
-                n = len(list(db.collection("USUARIOS").stream()))
-                u = f"USUARIO{n+1}"
-                p = f"{random.choice(animales)}{random.randint(10, 99)}"
-                db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
-                st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
+    with col2:
+        if st.button("REGISTRARSE / 등록"):
+            animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
+            n = len(list(db.collection("USUARIOS").stream()))
+            u = f"USUARIO{n+1}"
+            p = f"{random.choice(animales)}{random.randint(10, 99)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
+            st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
 
     st.divider()
-    
-    # Salida rápida y búsqueda también centradas visualmente por defecto
     st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
@@ -139,18 +110,14 @@ def login():
 
 def cambio_clave():
     st.title("PRIMER INICIO / 첫 로그인")
-    
-    # Centramos también el cambio de clave
-    c_left, c_center, c_right = st.columns([1, 2, 1])
-    with c_center:
-        nn = st.text_input("Nuevo Nombre / 새 이름").upper().strip()
-        nc = st.text_input("Nueva Clave / 새 비밀번호", type="password")
-        nc2 = st.text_input("Confirmar Clave / 비밀번호 확인", type="password")
-        if st.button("GUARDAR / 저장"):
-            if nc == nc2 and nn and nc:
-                db.collection("USUARIOS").document(st.session_state.temp_user).update({"nombre_personal": nn, "clave": nc, "cambio_pendiente": False})
-                st.session_state.user = nn; st.session_state.es_invitado = False; st.session_state.page = 'menu'; st.rerun()
-            else: st.error("Error: Claves no coinciden / 오류: 비밀번호 불일치")
+    nn = st.text_input("Nuevo Nombre / 새 이름").upper().strip()
+    nc = st.text_input("Nueva Clave / 새 비밀번호", type="password")
+    nc2 = st.text_input("Confirmar Clave / 비밀번호 확인", type="password")
+    if st.button("GUARDAR / 저장"):
+        if nc == nc2 and nn and nc:
+            db.collection("USUARIOS").document(st.session_state.temp_user).update({"nombre_personal": nn, "clave": nc, "cambio_pendiente": False})
+            st.session_state.user = nn; st.session_state.es_invitado = False; st.session_state.page = 'menu'; st.rerun()
+        else: st.error("Error: Claves no coinciden / 오류: 비밀번호 불일치")
 
 def menu():
     st.title("ALMACÉN / 창고")
@@ -268,13 +235,13 @@ def buscar():
     s = 0; u_list = set()
     
     # Detección
-    coleccion_detectada = None # Empezamos sin saber
+    coleccion_detectada = None 
     
     if c:
         for col in ["materiales", "holders"]:
             docs = list(db.collection(col).where("item", "==", c).stream())
             if len(docs) > 0:
-                coleccion_detectada = col.upper() # Se encontró aquí
+                coleccion_detectada = col.upper() # DETECTADO
                 
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
@@ -297,17 +264,15 @@ def buscar():
         
         with col_adj1:
             # LÓGICA DE FIJADO (LOCK):
-            # Si se detectó colección, usamos ese índice y DESACTIVAMOS (disabled=True) el selector.
-            # Si no se detectó, dejamos elegir.
             if coleccion_detectada == "HOLDERS":
                 idx_def = 1
-                esta_fijo = True
+                esta_fijo = True # BLOQUEADO
             elif coleccion_detectada == "MATERIALES":
                 idx_def = 0
-                esta_fijo = True
+                esta_fijo = True # BLOQUEADO
             else:
                 idx_def = 0
-                esta_fijo = False # No existe, deja elegir
+                esta_fijo = False # DESBLOQUEADO (Nuevo)
             
             target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=esta_fijo, key="adj_col")
             target_col = target_sel.lower()
