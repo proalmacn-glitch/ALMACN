@@ -56,47 +56,55 @@ def login():
     user_input = st.text_input("Usuario / 사용자").upper().strip()
     password = st.text_input("Clave / 비밀번호", type="password").strip()
     
-    col1, col2 = st.columns(2)
-    if col1.button("ENTRAR / 입장"):
-        data = None; doc_id = None 
-        doc = db.collection("USUARIOS").document(user_input).get()
-        if doc.exists:
-            data = doc.to_dict(); doc_id = user_input
-        else:
-            query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
-            for d in query: data = d.to_dict(); doc_id = d.id; break 
+    # --- CAMBIO DE ALINEACIÓN 1: Usamos 3 columnas con un pequeño espacio en medio ---
+    # Esto empuja los botones hacia los extremos exteriores.
+    col1, col_sep1, col2 = st.columns([1, 0.05, 1]) 
+    
+    with col1:
+        if st.button("ENTRAR / 입장"):
+            data = None; doc_id = None 
+            doc = db.collection("USUARIOS").document(user_input).get()
+            if doc.exists:
+                data = doc.to_dict(); doc_id = user_input
+            else:
+                query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
+                for d in query: data = d.to_dict(); doc_id = d.id; break 
 
-        if data:
-            if str(data.get('clave')) == password:
-                nombre_mostrar = data.get('nombre_personal', doc_id)
-                if doc_id == "YAKO":
-                    st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
-                elif data.get('estado') == "ACTIVO":
-                    if data.get('cambio_pendiente', False):
-                        st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
-                    else:
-                        st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
-                else: st.warning("Cuenta Pendiente / 계정 대기 중")
-            else: st.error("Clave Incorrecta / 비밀번호 오류")
-        else: st.error("Usuario no existe / 사용자 없음")
+            if data:
+                if str(data.get('clave')) == password:
+                    nombre_mostrar = data.get('nombre_personal', doc_id)
+                    if doc_id == "YAKO":
+                        st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
+                    elif data.get('estado') == "ACTIVO":
+                        if data.get('cambio_pendiente', False):
+                            st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
+                        else:
+                            st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
+                    else: st.warning("Cuenta Pendiente / 계정 대기 중")
+                else: st.error("Clave Incorrecta / 비밀번호 오류")
+            else: st.error("Usuario no existe / 사용자 없음")
 
-    if col2.button("REGISTRARSE / 등록"):
-        animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
-        n = len(list(db.collection("USUARIOS").stream()))
-        u = f"USUARIO{n+1}"
-        p = f"{random.choice(animales)}{random.randint(10, 99)}"
-        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
-        st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
+    with col2:
+        if st.button("REGISTRARSE / 등록"):
+            animales = ["PERRO", "GATO", "LEON", "TIGRE", "PUMA", "OSO", "TORO", "LOBO", "RATA", "PATO"]
+            n = len(list(db.collection("USUARIOS").stream()))
+            u = f"USUARIO{n+1}"
+            p = f"{random.choice(animales)}{random.randint(10, 99)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre": u, "nombre_personal": u, "cambio_pendiente": True})
+            st.success(f"TOMA FOTO / 사진 찍기:\n\nUser: {u}\nPass: {p}")
 
     st.divider()
     st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+    
+    # --- CAMBIO DE ALINEACIÓN 2: Lo mismo para la salida rápida ---
+    c1, c_sep2, c2 = st.columns([1, 0.05, 1])
     with c1:
         if st.button("SALIDA MATERIALES / 자재 출고"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "materiales")
     with c2:
         if st.button("SALIDA HOLDERS / 홀더 출고"): st.session_state.user = "INVITADO / 손님"; st.session_state.es_invitado = True; ir("SALIDA", "holders")
     
     st.write("") 
+    # El botón BUSCAR ya ocupa todo el ancho por defecto al no estar en columnas.
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
 
     st.write("")
@@ -124,6 +132,7 @@ def menu():
         pend = len(list(db.collection("USUARIOS").where("estado", "==", "PENDIENTE").stream()))
         if pend > 0: st.error(f"⚠ {pend} USUARIOS PENDIENTES / 대기 중인 사용자")
 
+    # El menú ya tiene una alineación correcta de 2 columnas bien separadas.
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
@@ -167,10 +176,8 @@ def formulario():
     if acc == "ENTRADA":
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         
-        # --- CORRECCIÓN: SIN GUIONES ---
         st.write("---")
         opciones_cat = ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
-        # index=None hace que empiece vacío/placeholder
         sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat, index=None, placeholder="Seleccionar / 선택")
         st.write("---")
         
@@ -247,16 +254,20 @@ def buscar():
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
 
+    # --- PANEL EXCLUSIVO DE YAKO ---
     if st.session_state.user == "YAKO" and c:
-        st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN: AJUSTE MANUAL DE STOCK / 재고 수동 조정</h3></div>""", unsafe_allow_html=True)
+        st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
+        
+        # 1. AJUSTE DE STOCK
+        st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
         col_adj1, col_adj2 = st.columns(2)
         with col_adj1:
-            target_sel = st.selectbox("Colección a ajustar / 조정할 컬렉션", ["MATERIALES", "HOLDERS"], key="adj_col")
+            target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], key="adj_col")
             target_col = target_sel.lower()
         with col_adj2:
-            adj_qty = st.number_input("Cantidad a ajustar (+/-) / 조정 수량", step=1, value=0, key="adj_qty")
+            adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
         
-        st.caption("Ejemplo: Pon '5' para sumar 5. Pon '-3' para restar 3. / 예: 더하려면 5, 빼려면 -3 입력")
+        st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
         
         if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
             if adj_qty != 0:
@@ -272,8 +283,26 @@ def buscar():
                 })
                 st.success(f"Ajuste de {adj_qty} aplicado a {c} / 조정 완료.")
                 st.rerun() 
-            else:
-                st.warning("La cantidad es 0 / 수량이 0입니다.")
+            else: st.warning("Cantidad es 0 / 수량이 0입니다.")
+
+        st.divider()
+
+        # 2. EDITAR CATEGORÍA
+        st.markdown("#### 2. EDITAR CATEGORÍA / 카테고리 편집")
+        st.caption("Actualiza la categoría de este código en TODOS los registros históricos. / 모든 기록 업데이트.")
+        
+        new_cat_yako = st.selectbox("NUEVA CATEGORÍA / 새 카테고리", ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"], key="cat_yako_update")
+        
+        if st.button("ACTUALIZAR CATEGORÍA / 카테고리 업데이트", key="btn_cat_upd"):
+            m_docs = db.collection("materiales").where("item", "==", c).stream()
+            for d in m_docs: db.collection("materiales").document(d.id).update({"categoria_detalle": new_cat_yako})
+            
+            h_docs = db.collection("holders").where("item", "==", c).stream()
+            for d in h_docs: db.collection("holders").document(d.id).update({"categoria_detalle": new_cat_yako})
+            
+            st.success("Categoría actualizada correctamente / 카테고리 업데이트 완료")
+            st.rerun()
+
         st.divider()
 
     if st.button("VOLVER / 돌아가기"):
