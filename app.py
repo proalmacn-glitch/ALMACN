@@ -162,12 +162,12 @@ def formulario():
     conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복")
 
     # VARIABLES ESPECÍFICAS SEGÚN ENTRADA O SALIDA
-    sub_categoria = "---" # Por defecto vacío
+    sub_categoria = "---" 
 
     if acc == "ENTRADA":
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         
-        # --- NUEVO CAMPO OPCIONAL ---
+        # --- AQUÍ ESTÁ LA LÓGICA: SOLO EN ENTRADA ---
         st.write("---")
         opciones_cat = ["---", "ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
         sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat)
@@ -175,6 +175,7 @@ def formulario():
         
         dest = "ALMACEN"
     else:
+        # EN SALIDA NO APARECE LA CATEGORÍA
         ubi = "SALIDA / 출고"
         dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)").upper().strip()
     
@@ -207,7 +208,7 @@ def formulario():
                 blob.make_public(); url_foto = blob.public_url
             except Exception as e: st.error(f"Error foto: {e}"); url_foto = "ERROR"
 
-        # GUARDAR EN BASE DE DATOS (Incluyendo la categoría si existe)
+        # GUARDAR EN BASE DE DATOS
         datos_guardar = {
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
             "item": cod, 
@@ -218,6 +219,7 @@ def formulario():
             "foto_url": url_foto
         }
         
+        # SOLO GUARDAMOS LA CATEGORÍA SI SE SELECCIONÓ ALGO
         if sub_categoria != "---":
             datos_guardar["categoria_detalle"] = sub_categoria
 
@@ -309,7 +311,7 @@ def admin():
                     "ITEM / 항목": dt.get('item', ''), 
                     "CANTIDAD / 수량": q, 
                     "TIPO / 유형": tipo_mov, 
-                    "CATEGORÍA / 카테고리": dt.get('categoria_detalle', '---'), # NUEVA COLUMNA
+                    "CATEGORÍA / 카테고리": dt.get('categoria_detalle', '---'),
                     "UBICACIÓN / 위치": dt.get('ubicacion', ''), 
                     "SOLICITANTE / 요청자": dt.get('solicitante', ''), 
                     "FOTO / 사진 (LINK)": dt.get('foto_url', 'NO')
