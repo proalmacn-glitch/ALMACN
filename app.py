@@ -59,7 +59,6 @@ def login():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
-            # CORRECCIÓN 1: VALIDAR QUE NO ESTÉ VACÍO
             if not user_input:
                 st.warning("Escribe un usuario / 사용자 이름을 입력하세요")
             else:
@@ -160,6 +159,12 @@ def formulario():
     cat = st.session_state.categoria.upper(); acc = st.session_state.accion
     tipo_txt = "ENTRADA / 입고" if acc == "ENTRADA" else "SALIDA / 출고"
     st.header(f"{cat} - {tipo_txt}")
+    
+    # --- MENSAJE DE ÉXITO TRAS RECARGAR ---
+    if 'success_msg' in st.session_state:
+        st.success(st.session_state.success_msg)
+        del st.session_state.success_msg # Borrar mensaje para que no salga siempre
+
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
     cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
@@ -225,12 +230,17 @@ def formulario():
             datos_guardar["categoria_detalle"] = sub_categoria
 
         db.collection(st.session_state.categoria).add(datos_guardar)
-        st.success("EXITO / 성공")
         
-        # --- LIMPIEZA AUTOMÁTICA ---
+        # --- PREPARAR LIMPIEZA Y RECARGA ---
+        # 1. Guardar mensaje de éxito en sesión para mostrarlo DESPUÉS del rerun
+        st.session_state.success_msg = "✅ CARGA EXITOSA / 업로드 성공 - LISTO PARA EL SIGUIENTE / 다음 항목 준비 완료"
+        
+        # 2. Borrar las llaves de los inputs para limpiar el formulario
         for key in ["reg_cod", "reg_cant", "reg_conf", "reg_ubi", "reg_dest", "reg_cat", "reg_foto"]:
             if key in st.session_state:
                 del st.session_state[key]
+        
+        # 3. Recargar la página
         st.rerun()
         
     if st.button("VOLVER / 돌아가기"): 
@@ -254,7 +264,6 @@ def buscar():
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
-                # CORRECCIÓN 3: FILTRAR PALABRA 'AJUSTE' PARA QUE NO SALGA EN EL LETRERO AZUL
                 if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
                     u_list.add(l)
     
@@ -264,7 +273,6 @@ def buscar():
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
 
-    # --- PANEL EXCLUSIVO DE YAKO ---
     if st.session_state.user == "YAKO" and c:
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
         
@@ -345,7 +353,6 @@ def admin():
         col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"]); 
         col = col_sel.lower()
         c = st.text_input("Código a Borrar / 삭제할 코드").upper()
-        # CORRECCIÓN 2: AGREGAR KEY ÚNICA
         if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
             docs = db.collection(col).where("item", "==", c).stream()
             count = 0
@@ -409,7 +416,6 @@ def admin():
                 s = st.selectbox("Usuario / 사용자", us)
                 sid = u_ids[us.index(s)]
                 c1, c2 = st.columns(2)
-                # CORRECCIÓN 2: AGREGAR KEYS ÚNICAS
                 if c1.button("ACTIVAR / 활성화", key="btn_activar_user"): 
                     db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"}); st.success("OK"); st.rerun()
                 if c2.button("BORRAR / 삭제", key="btn_borrar_user"): 
