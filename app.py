@@ -53,7 +53,6 @@ def login():
     st.title("LOGIN / 로그인")
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     
-    # --- LOGIN NORMAL (SIN CENTRADO FORZADO) ---
     user_input = st.text_input("Usuario / 사용자").upper().strip()
     password = st.text_input("Clave / 비밀번호", type="password").strip()
     
@@ -159,28 +158,35 @@ def formulario():
     st.header(f"{cat} - {tipo_txt}")
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
-    cod = st.text_input("ID / CÓDIGO / 코드").upper().strip()
-    cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기")
+    # --- CAMPO: ID ---
+    cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
+    
+    # --- CAMPO: CANTIDAD ---
+    cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기", key="reg_cant")
+    
+    # --- CAMPO: CONFIRMACIÓN ---
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
-    conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복")
+    conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복", key="reg_conf")
 
     sub_categoria = None
 
     if acc == "ENTRADA":
-        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
+        # --- CAMPO: UBICACIÓN (ENTRADA) ---
+        ubi = st.text_input("UBICACIÓN / 위치", key="reg_ubi").upper().strip()
         
         st.write("---")
         opciones_cat = ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"]
-        sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat, index=None, placeholder="Seleccionar / 선택")
+        sub_categoria = st.selectbox("CATEGORÍA (OPCIONAL) / 카테고리 (선택)", opciones_cat, index=None, placeholder="Seleccionar / 선택", key="reg_cat")
         st.write("---")
         
         dest = "ALMACEN"
     else:
         ubi = "SALIDA / 출고"
-        dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)").upper().strip()
+        # --- CAMPO: DESTINATARIO (SALIDA) ---
+        dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)", key="reg_dest").upper().strip()
     
     st.write("---")
-    foto = st.camera_input("FOTO EVIDENCIA / 증거 사진")
+    foto = st.camera_input("FOTO EVIDENCIA / 증거 사진", key="reg_foto")
     st.write("---")
         
     if st.button("REGISTRAR / 등록"):
@@ -224,6 +230,18 @@ def formulario():
         db.collection(st.session_state.categoria).add(datos_guardar)
         st.success("EXITO / 성공")
         
+        # --- LIMPIEZA AUTOMÁTICA DE CAMPOS ---
+        # Borramos los valores de la sesión para que se reinicien al recargar
+        st.session_state.reg_cod = ""
+        st.session_state.reg_cant = None
+        st.session_state.reg_conf = None
+        if "reg_ubi" in st.session_state: st.session_state.reg_ubi = ""
+        if "reg_dest" in st.session_state: st.session_state.reg_dest = ""
+        if "reg_cat" in st.session_state: st.session_state.reg_cat = None
+        
+        # Recargamos la página para mostrar todo limpio
+        st.rerun()
+        
     if st.button("VOLVER / 돌아가기"): 
         if st.session_state.get('es_invitado', False): st.session_state.user = None; st.session_state.page = 'login'
         else: st.session_state.page = 'menu'
@@ -260,25 +278,28 @@ def buscar():
         
         # 1. AJUSTE DE STOCK
         st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
-        col_adj1, col_adj2 = st.columns(2)
+        col_adj1, col_adj2, col_adj3 = st.columns(3)
         
         with col_adj1:
-            # LÓGICA DE FIJADO (LOCK):
             if coleccion_detectada == "HOLDERS":
                 idx_def = 1
-                esta_fijo = True # BLOQUEADO
+                esta_fijo = True 
             elif coleccion_detectada == "MATERIALES":
                 idx_def = 0
-                esta_fijo = True # BLOQUEADO
+                esta_fijo = True 
             else:
                 idx_def = 0
-                esta_fijo = False # DESBLOQUEADO (Nuevo)
+                esta_fijo = False 
             
             target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=esta_fijo, key="adj_col")
             target_col = target_sel.lower()
             
         with col_adj2:
             adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
+            
+        with col_adj3:
+            # --- NUEVO: CAMPO DE UBICACIÓN REAL ---
+            adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="AJUSTE ADMIN", key="adj_ubi")
         
         st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
         
@@ -288,13 +309,14 @@ def buscar():
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "item": c,
                     "cantidad": adj_qty,
-                    "ubicacion": "AJUSTE MANUAL YAKO",
+                    # Usamos la ubicación que escribió Yako, no el texto fijo
+                    "ubicacion": adj_ubi_real.upper(),
                     "registrado_por": "YAKO",
                     "solicitante": "AJUSTE DIRECTO",
                     "foto_url": "NO FOTO",
                     "tipo": "AJUSTE"
                 })
-                st.success(f"Ajuste de {adj_qty} aplicado a {c} / 조정 완료.")
+                st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
                 st.rerun() 
             else: st.warning("Cantidad es 0 / 수량이 0입니다.")
 
