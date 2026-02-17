@@ -158,20 +158,15 @@ def formulario():
     st.header(f"{cat} - {tipo_txt}")
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
-    # --- CAMPO: ID ---
+    # --- INPUTS CON KEYS PARA PODER LIMPIARLOS ---
     cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
-    
-    # --- CAMPO: CANTIDAD ---
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기", key="reg_cant")
-    
-    # --- CAMPO: CONFIRMACIÓN ---
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
     conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=1, step=1, value=None, placeholder="Repite el número / 숫자 반복", key="reg_conf")
 
     sub_categoria = None
 
     if acc == "ENTRADA":
-        # --- CAMPO: UBICACIÓN (ENTRADA) ---
         ubi = st.text_input("UBICACIÓN / 위치", key="reg_ubi").upper().strip()
         
         st.write("---")
@@ -182,7 +177,6 @@ def formulario():
         dest = "ALMACEN"
     else:
         ubi = "SALIDA / 출고"
-        # --- CAMPO: DESTINATARIO (SALIDA) ---
         dest = st.text_input("QUIEN RETIRA / 수령자 (Manual)", key="reg_dest").upper().strip()
     
     st.write("---")
@@ -230,16 +224,12 @@ def formulario():
         db.collection(st.session_state.categoria).add(datos_guardar)
         st.success("EXITO / 성공")
         
-        # --- LIMPIEZA AUTOMÁTICA DE CAMPOS ---
-        # Borramos los valores de la sesión para que se reinicien al recargar
-        st.session_state.reg_cod = ""
-        st.session_state.reg_cant = None
-        st.session_state.reg_conf = None
-        if "reg_ubi" in st.session_state: st.session_state.reg_ubi = ""
-        if "reg_dest" in st.session_state: st.session_state.reg_dest = ""
-        if "reg_cat" in st.session_state: st.session_state.reg_cat = None
+        # --- LIMPIEZA AUTOMÁTICA ---
+        # Borramos las variables de estado
+        for key in ["reg_cod", "reg_cant", "reg_conf", "reg_ubi", "reg_dest", "reg_cat", "reg_foto"]:
+            if key in st.session_state:
+                del st.session_state[key]
         
-        # Recargamos la página para mostrar todo limpio
         st.rerun()
         
     if st.button("VOLVER / 돌아가기"): 
@@ -252,19 +242,22 @@ def buscar():
     c = st.text_input("ID / CÓDIGO / 코드").upper()
     s = 0; u_list = set()
     
-    # Detección
     coleccion_detectada = None 
     
     if c:
         for col in ["materiales", "holders"]:
             docs = list(db.collection(col).where("item", "==", c).stream())
             if len(docs) > 0:
-                coleccion_detectada = col.upper() # DETECTADO
+                coleccion_detectada = col.upper()
                 
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
-                if "SALIDA" not in l and l != "": u_list.add(l)
+                
+                # --- FILTRO DE LIMPIEZA VISUAL ---
+                # Si la ubicación dice "SALIDA" o "AJUSTE", NO la agregamos a la lista visible.
+                if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
+                    u_list.add(l)
     
     st.divider()
     c1, c2 = st.columns(2)
@@ -298,19 +291,23 @@ def buscar():
             adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
             
         with col_adj3:
-            # --- NUEVO: CAMPO DE UBICACIÓN REAL ---
-            adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="AJUSTE ADMIN", key="adj_ubi")
+            # --- UBICACIÓN REAL LIMPIA ---
+            # Viene vacío por defecto para que pongas la ubicación real (ej: F1-1)
+            # Si no pones nada, se guardará como vacío o puedes poner un guión.
+            adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="", placeholder="Ej: F1-1", key="adj_ubi")
         
         st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
         
         if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
             if adj_qty != 0:
+                # Usamos la ubicación escrita o "AJUSTE" si se deja vacía para no romper la base de datos
+                ubi_final = adj_ubi_real.upper() if adj_ubi_real else "AJUSTE"
+                
                 db.collection(target_col).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "item": c,
                     "cantidad": adj_qty,
-                    # Usamos la ubicación que escribió Yako, no el texto fijo
-                    "ubicacion": adj_ubi_real.upper(),
+                    "ubicacion": ubi_final,
                     "registrado_por": "YAKO",
                     "solicitante": "AJUSTE DIRECTO",
                     "foto_url": "NO FOTO",
