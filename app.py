@@ -246,53 +246,39 @@ def formulario():
 
 def buscar():
     st.header("BUSCAR / 검색")
-    search_input = st.text_input("ID / CÓDIGO / 코드 (Parcial o Completo)").upper()
+    c = st.text_input("ID / CÓDIGO / 코드 (Parcial o Completo)").upper()
     
-    # Variables de estado
     s = 0; u_list = set()
     coleccion_detectada = None 
     final_code_to_use = None
     
-    if search_input:
-        # 1. BÚSQUEDA INTELIGENTE (CONTAINS)
-        # Buscamos en ambas colecciones
+    if c:
         matches = []
         for col in ["materiales", "holders"]:
-            # Obtenemos TODOS los documentos (necesario para búsqueda parcial en Firestore sin indexador externo)
             all_docs = db.collection(col).stream()
             for d in all_docs:
                 dt = d.to_dict()
                 item_code = dt.get('item', '')
-                if search_input in item_code:
-                    # Guardamos coincidencia: (Código, Colección)
+                if c in item_code:
                     matches.append((item_code, col))
 
-        # Eliminamos duplicados de códigos encontrados
-        unique_matches = sorted(list(set(matches))) # Lista de tuplas (codigo, coleccion)
+        unique_matches = sorted(list(set(matches)))
         
         if len(unique_matches) == 0:
             st.warning("No se encontraron coincidencias / 일치하는 항목 없음")
         
         elif len(unique_matches) > 1:
-            # Si hay varios, pedimos elegir
             st.info(f"Se encontraron {len(unique_matches)} coincidencias. Selecciona una:")
             opciones = [f"{m[0]} ({m[1].upper()})" for m in unique_matches]
             seleccion = st.selectbox("Resultados / 결과", opciones)
-            
-            # Extraemos el código limpio de la selección
             final_code_to_use = seleccion.split(" (")[0]
-            coleccion_detectada = seleccion.split(" (")[1].replace(")", "") # MATERIALES o HOLDERS
-            
+            coleccion_detectada = seleccion.split(" (")[1].replace(")", "") 
         else:
-            # Solo 1 coincidencia
             final_code_to_use = unique_matches[0][0]
             coleccion_detectada = unique_matches[0][1].upper()
 
-    # --- MOSTRAR RESULTADOS SI TENEMOS UN CÓDIGO SELECCIONADO ---
     if final_code_to_use:
-        # Recalculamos stock y ubicación SOLO para el código exacto seleccionado
         target_col_lower = coleccion_detectada.lower()
-        
         docs = db.collection(target_col_lower).where("item", "==", final_code_to_use).stream()
         for d in docs:
             dt = d.to_dict()
@@ -308,16 +294,13 @@ def buscar():
         c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
         st.divider()
 
-        # --- PANEL EXCLUSIVO DE YAKO ---
         if st.session_state.user == "YAKO":
             st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
             
-            # 1. AJUSTE DE STOCK
             st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
             col_adj1, col_adj2, col_adj3 = st.columns(3)
             
             with col_adj1:
-                # Bloqueamos la colección porque ya la sabemos
                 idx_def = 0 if coleccion_detectada == "MATERIALES" else 1
                 st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=True, key="adj_col_disp")
                 
@@ -348,7 +331,6 @@ def buscar():
 
             st.divider()
 
-            # 2. CORREGIR UBICACIÓN
             st.markdown("#### 2. CORREGIR UBICACIÓN (HISTÓRICO) / 위치 수정")
             new_ubi_history = st.text_input("Nueva Ubicación Única / 새 위치", key="yako_hist_ubi").upper().strip()
             if st.button("ACTUALIZAR TODAS LAS UBICACIONES", key="btn_upd_hist"):
@@ -362,7 +344,6 @@ def buscar():
 
             st.divider()
 
-            # 3. EDITAR CATEGORÍA
             st.markdown("#### 3. EDITAR CATEGORÍA / 카테고리 편집")
             new_cat_yako = st.selectbox("NUEVA CATEGORÍA", ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"], key="cat_yako_update")
             if st.button("ACTUALIZAR CATEGORÍA", key="btn_cat_upd"):
@@ -392,6 +373,17 @@ def admin():
             for d in docs: db.collection(col).document(d.id).delete(); count+=1
             if count > 0: st.success("Borrado / 삭제됨")
             else: st.warning("No encontrado / 찾을 수 없음")
+        
+        st.divider()
+        # --- BOTÓN DE BORRAR TODO (RESTORED) ---
+        st.markdown("### ⚠️ ZONA DE PELIGRO / 위험 구역 ⚠️")
+        if st.button("🔥 BORRAR TODO EL STOCK (COLECCIÓN COMPLETA) / 전체 삭제 🔥", key="btn_borrar_todo"):
+            all_docs = db.collection(col).stream()
+            count = 0
+            for d in all_docs:
+                db.collection(col).document(d.id).delete()
+                count += 1
+            st.success(f"SE ELIMINARON {count} REGISTROS DE {col.upper()}.")
 
     with t2:
         ce_sel = st.selectbox("Descargar / 다운로드", ["MATERIALES", "HOLDERS"])
@@ -402,7 +394,6 @@ def admin():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
                 tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
                 
-                # --- GENERAR LINK QR ---
                 qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={dt.get('item', '')}"
                 
                 data.append({
