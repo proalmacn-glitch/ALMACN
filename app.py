@@ -162,7 +162,6 @@ def formulario():
     
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
-    # INPUTS
     cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기", key="reg_cant")
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
@@ -187,13 +186,10 @@ def formulario():
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진", key="reg_foto")
     st.write("---")
     
-    # BOTÓN DE REGISTRO
     boton_registrar = st.button("REGISTRAR / 등록")
 
-    # --- MENSAJE DE ÉXITO (ABAJO DEL BOTÓN) ---
     if 'success_msg' in st.session_state:
         st.success(st.session_state.success_msg)
-        # Lo borramos para que si recarga manual no salga
         del st.session_state.success_msg
 
     if boton_registrar:
@@ -236,14 +232,11 @@ def formulario():
 
         db.collection(st.session_state.categoria).add(datos_guardar)
         
-        # --- PREPARAR LIMPIEZA Y RECARGA ---
         st.session_state.success_msg = "✅ CARGA EXITOSA / 업로드 성공 - LISTO PARA EL SIGUIENTE / 다음 항목 준비 완료"
         
-        # Borrar Inputs
         for key in ["reg_cod", "reg_cant", "reg_conf", "reg_ubi", "reg_dest", "reg_cat", "reg_foto"]:
             if key in st.session_state:
                 del st.session_state[key]
-        
         st.rerun()
         
     if st.button("VOLVER / 돌아가기"): 
@@ -267,7 +260,7 @@ def buscar():
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
-                # FILTRO: No mostrar "SALIDA" ni "AJUSTE"
+                # FILTRO PARA LA VISUALIZACIÓN
                 if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
                     u_list.add(l)
     
@@ -277,6 +270,7 @@ def buscar():
     c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
     st.divider()
 
+    # --- PANEL EXCLUSIVO DE YAKO ---
     if st.session_state.user == "YAKO" and c:
         st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
         
@@ -286,14 +280,11 @@ def buscar():
         
         with col_adj1:
             if coleccion_detectada == "HOLDERS":
-                idx_def = 1
-                esta_fijo = True 
+                idx_def = 1; esta_fijo = True 
             elif coleccion_detectada == "MATERIALES":
-                idx_def = 0
-                esta_fijo = True 
+                idx_def = 0; esta_fijo = True 
             else:
-                idx_def = 0
-                esta_fijo = False 
+                idx_def = 0; esta_fijo = False 
             
             target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=esta_fijo, key="adj_col")
             target_col = target_sel.lower()
@@ -309,7 +300,6 @@ def buscar():
         if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
             if adj_qty != 0:
                 ubi_final = adj_ubi_real.upper() if adj_ubi_real else "AJUSTE"
-                
                 db.collection(target_col).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "item": c,
@@ -326,9 +316,27 @@ def buscar():
 
         st.divider()
 
-        # 2. EDITAR CATEGORÍA
-        st.markdown("#### 2. EDITAR CATEGORÍA / 카테고리 편집")
-        st.caption("Actualiza la categoría de este código en TODOS los registros históricos. / 모든 기록 업데이트.")
+        # 2. CORREGIR UBICACIÓN (NUEVO)
+        st.markdown("#### 2. CORREGIR UBICACIÓN (HISTÓRICO) / 위치 수정 (기록)")
+        st.caption("Esto cambiará la ubicación en TODOS los registros de este material. Dejar vacío para borrar. / 전체 기록의 위치를 변경합니다. 지우려면 비워 두십시오.")
+        
+        new_ubi_history = st.text_input("Nueva Ubicación Única / 새 위치", key="yako_hist_ubi").upper().strip()
+        
+        if st.button("ACTUALIZAR TODAS LAS UBICACIONES / 위치 업데이트", key="btn_upd_hist"):
+            docs = db.collection(target_col).where("item", "==", c).stream()
+            count = 0
+            for d in docs:
+                # Si está vacío el input, borramos el campo (ponemos string vacía)
+                db.collection(target_col).document(d.id).update({"ubicacion": new_ubi_history})
+                count += 1
+            st.success(f"Se actualizaron {count} registros con la ubicación: '{new_ubi_history}'")
+            st.rerun()
+
+        st.divider()
+
+        # 3. EDITAR CATEGORÍA
+        st.markdown("#### 3. EDITAR CATEGORÍA / 카테고리 편집")
+        st.caption("Actualiza la categoría en todo el historial. / 전체 기록 카테고리 업데이트.")
         
         new_cat_yako = st.selectbox("NUEVA CATEGORÍA / 새 카테고리", ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"], key="cat_yako_update")
         
