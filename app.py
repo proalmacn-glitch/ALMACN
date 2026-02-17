@@ -246,111 +246,132 @@ def formulario():
 
 def buscar():
     st.header("BUSCAR / 검색")
-    c = st.text_input("ID / CÓDIGO / 코드").upper()
+    search_input = st.text_input("ID / CÓDIGO / 코드 (Parcial o Completo)").upper()
+    
+    # Variables de estado
     s = 0; u_list = set()
-    
     coleccion_detectada = None 
+    final_code_to_use = None
     
-    if c:
+    if search_input:
+        # 1. BÚSQUEDA INTELIGENTE (CONTAINS)
+        # Buscamos en ambas colecciones
+        matches = []
         for col in ["materiales", "holders"]:
-            docs = list(db.collection(col).where("item", "==", c).stream())
-            if len(docs) > 0:
-                coleccion_detectada = col.upper()
+            # Obtenemos TODOS los documentos (necesario para búsqueda parcial en Firestore sin indexador externo)
+            all_docs = db.collection(col).stream()
+            for d in all_docs:
+                dt = d.to_dict()
+                item_code = dt.get('item', '')
+                if search_input in item_code:
+                    # Guardamos coincidencia: (Código, Colección)
+                    matches.append((item_code, col))
+
+        # Eliminamos duplicados de códigos encontrados
+        unique_matches = sorted(list(set(matches))) # Lista de tuplas (codigo, coleccion)
+        
+        if len(unique_matches) == 0:
+            st.warning("No se encontraron coincidencias / 일치하는 항목 없음")
+        
+        elif len(unique_matches) > 1:
+            # Si hay varios, pedimos elegir
+            st.info(f"Se encontraron {len(unique_matches)} coincidencias. Selecciona una:")
+            opciones = [f"{m[0]} ({m[1].upper()})" for m in unique_matches]
+            seleccion = st.selectbox("Resultados / 결과", opciones)
+            
+            # Extraemos el código limpio de la selección
+            final_code_to_use = seleccion.split(" (")[0]
+            coleccion_detectada = seleccion.split(" (")[1].replace(")", "") # MATERIALES o HOLDERS
+            
+        else:
+            # Solo 1 coincidencia
+            final_code_to_use = unique_matches[0][0]
+            coleccion_detectada = unique_matches[0][1].upper()
+
+    # --- MOSTRAR RESULTADOS SI TENEMOS UN CÓDIGO SELECCIONADO ---
+    if final_code_to_use:
+        # Recalculamos stock y ubicación SOLO para el código exacto seleccionado
+        target_col_lower = coleccion_detectada.lower()
+        
+        docs = db.collection(target_col_lower).where("item", "==", final_code_to_use).stream()
+        for d in docs:
+            dt = d.to_dict()
+            s += dt.get('cantidad', 0)
+            l = dt.get('ubicacion', '').upper()
+            if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
+                u_list.add(l)
+
+        st.subheader(f"RESULTADO: {final_code_to_use}")
+        st.divider()
+        c1, c2 = st.columns(2)
+        c1.metric("STOCK / 재고", s)
+        c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
+        st.divider()
+
+        # --- PANEL EXCLUSIVO DE YAKO ---
+        if st.session_state.user == "YAKO":
+            st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
+            
+            # 1. AJUSTE DE STOCK
+            st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
+            col_adj1, col_adj2, col_adj3 = st.columns(3)
+            
+            with col_adj1:
+                # Bloqueamos la colección porque ya la sabemos
+                idx_def = 0 if coleccion_detectada == "MATERIALES" else 1
+                st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=True, key="adj_col_disp")
                 
-            for d in docs:
-                dt = d.to_dict(); s += dt.get('cantidad', 0)
-                l = dt.get('ubicacion', '').upper()
-                # FILTRO PARA LA VISUALIZACIÓN
-                if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
-                    u_list.add(l)
-    
-    st.divider()
-    c1, c2 = st.columns(2)
-    c1.metric("STOCK / 재고", s)
-    c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
-    st.divider()
-
-    # --- PANEL EXCLUSIVO DE YAKO ---
-    if st.session_state.user == "YAKO" and c:
-        st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
-        
-        # 1. AJUSTE DE STOCK
-        st.markdown("#### 1. AJUSTE DE STOCK / 재고 조정")
-        col_adj1, col_adj2, col_adj3 = st.columns(3)
-        
-        with col_adj1:
-            if coleccion_detectada == "HOLDERS":
-                idx_def = 1; esta_fijo = True 
-            elif coleccion_detectada == "MATERIALES":
-                idx_def = 0; esta_fijo = True 
-            else:
-                idx_def = 0; esta_fijo = False 
+            with col_adj2:
+                adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
+                
+            with col_adj3:
+                adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="", placeholder="Ej: F1-1", key="adj_ubi")
             
-            target_sel = st.selectbox("Colección / 컬렉션", ["MATERIALES", "HOLDERS"], index=idx_def, disabled=esta_fijo, key="adj_col")
-            target_col = target_sel.lower()
+            st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
             
-        with col_adj2:
-            adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
-            
-        with col_adj3:
-            adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="", placeholder="Ej: F1-1", key="adj_ubi")
-        
-        st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
-        
-        if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
-            if adj_qty != 0:
-                ubi_final = adj_ubi_real.upper() if adj_ubi_real else "AJUSTE"
-                db.collection(target_col).add({
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "item": c,
-                    "cantidad": adj_qty,
-                    "ubicacion": ubi_final,
-                    "registrado_por": "YAKO",
-                    "solicitante": "AJUSTE DIRECTO",
-                    "foto_url": "NO FOTO",
-                    "tipo": "AJUSTE"
-                })
-                st.success(f"Ajuste de {adj_qty} aplicado a {c}.")
-                st.rerun() 
-            else: st.warning("Cantidad es 0 / 수량이 0입니다.")
+            if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
+                if adj_qty != 0:
+                    ubi_final = adj_ubi_real.upper() if adj_ubi_real else "AJUSTE"
+                    db.collection(target_col_lower).add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "item": final_code_to_use,
+                        "cantidad": adj_qty,
+                        "ubicacion": ubi_final,
+                        "registrado_por": "YAKO",
+                        "solicitante": "AJUSTE DIRECTO",
+                        "foto_url": "NO FOTO",
+                        "tipo": "AJUSTE"
+                    })
+                    st.success(f"Ajuste aplicado a {final_code_to_use}.")
+                    st.rerun() 
+                else: st.warning("Cantidad es 0")
 
-        st.divider()
+            st.divider()
 
-        # 2. CORREGIR UBICACIÓN (NUEVO)
-        st.markdown("#### 2. CORREGIR UBICACIÓN (HISTÓRICO) / 위치 수정 (기록)")
-        st.caption("Esto cambiará la ubicación en TODOS los registros de este material. Dejar vacío para borrar. / 전체 기록의 위치를 변경합니다. 지우려면 비워 두십시오.")
-        
-        new_ubi_history = st.text_input("Nueva Ubicación Única / 새 위치", key="yako_hist_ubi").upper().strip()
-        
-        if st.button("ACTUALIZAR TODAS LAS UBICACIONES / 위치 업데이트", key="btn_upd_hist"):
-            docs = db.collection(target_col).where("item", "==", c).stream()
-            count = 0
-            for d in docs:
-                # Si está vacío el input, borramos el campo (ponemos string vacía)
-                db.collection(target_col).document(d.id).update({"ubicacion": new_ubi_history})
-                count += 1
-            st.success(f"Se actualizaron {count} registros con la ubicación: '{new_ubi_history}'")
-            st.rerun()
+            # 2. CORREGIR UBICACIÓN
+            st.markdown("#### 2. CORREGIR UBICACIÓN (HISTÓRICO) / 위치 수정")
+            new_ubi_history = st.text_input("Nueva Ubicación Única / 새 위치", key="yako_hist_ubi").upper().strip()
+            if st.button("ACTUALIZAR TODAS LAS UBICACIONES", key="btn_upd_hist"):
+                docs_upd = db.collection(target_col_lower).where("item", "==", final_code_to_use).stream()
+                c_upd = 0
+                for d in docs_upd:
+                    db.collection(target_col_lower).document(d.id).update({"ubicacion": new_ubi_history})
+                    c_upd += 1
+                st.success(f"Actualizados {c_upd} registros.")
+                st.rerun()
 
-        st.divider()
+            st.divider()
 
-        # 3. EDITAR CATEGORÍA
-        st.markdown("#### 3. EDITAR CATEGORÍA / 카테고리 편집")
-        st.caption("Actualiza la categoría en todo el historial. / 전체 기록 카테고리 업데이트.")
-        
-        new_cat_yako = st.selectbox("NUEVA CATEGORÍA / 새 카테고리", ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"], key="cat_yako_update")
-        
-        if st.button("ACTUALIZAR CATEGORÍA / 카테고리 업데이트", key="btn_cat_upd"):
-            m_docs = db.collection("materiales").where("item", "==", c).stream()
-            for d in m_docs: db.collection("materiales").document(d.id).update({"categoria_detalle": new_cat_yako})
-            
-            h_docs = db.collection("holders").where("item", "==", c).stream()
-            for d in h_docs: db.collection("holders").document(d.id).update({"categoria_detalle": new_cat_yako})
-            
-            st.success("Categoría actualizada correctamente / 카테고리 업데이트 완료")
-            st.rerun()
-
-        st.divider()
+            # 3. EDITAR CATEGORÍA
+            st.markdown("#### 3. EDITAR CATEGORÍA / 카테고리 편집")
+            new_cat_yako = st.selectbox("NUEVA CATEGORÍA", ["ROBOT", "GUN", "JIG", "ATD", "STUD ARC", "STUD RESISTENCE", "CO2", "SEALER", "H.W", "OTRO"], key="cat_yako_update")
+            if st.button("ACTUALIZAR CATEGORÍA", key="btn_cat_upd"):
+                docs_cat = db.collection(target_col_lower).where("item", "==", final_code_to_use).stream()
+                for d in docs_cat:
+                    db.collection(target_col_lower).document(d.id).update({"categoria_detalle": new_cat_yako})
+                st.success("Categoría actualizada.")
+                st.rerun()
+            st.divider()
 
     if st.button("VOLVER / 돌아가기"):
         if st.session_state.user is None: st.session_state.page = 'login'
@@ -381,6 +402,9 @@ def admin():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
                 tipo_mov = "AJUSTE MANUAL / 수동 조정" if dt.get('tipo') == "AJUSTE" else ("ENTRADA / 입고" if q>=0 else "SALIDA / 출고")
                 
+                # --- GENERAR LINK QR ---
+                qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={dt.get('item', '')}"
+                
                 data.append({
                     "FECHA / 날짜": dt.get('fecha', ''), 
                     "REGISTRADO POR / 등록자": dt.get('registrado_por', ''), 
@@ -390,7 +414,8 @@ def admin():
                     "CATEGORÍA / 카테고리": dt.get('categoria_detalle', '---'),
                     "UBICACIÓN / 위치": dt.get('ubicacion', ''), 
                     "SOLICITANTE / 요청자": dt.get('solicitante', ''), 
-                    "FOTO / 사진 (LINK)": dt.get('foto_url', 'NO')
+                    "FOTO / 사진 (LINK)": dt.get('foto_url', 'NO'),
+                    "QR LINK / QR 링크": qr_link
                 })
             
             if data:
