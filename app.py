@@ -59,27 +59,31 @@ def login():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
-            data = None; doc_id = None 
-            doc = db.collection("USUARIOS").document(user_input).get()
-            if doc.exists:
-                data = doc.to_dict(); doc_id = user_input
+            # CORRECCIÓN 1: VALIDAR QUE NO ESTÉ VACÍO
+            if not user_input:
+                st.warning("Escribe un usuario / 사용자 이름을 입력하세요")
             else:
-                query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
-                for d in query: data = d.to_dict(); doc_id = d.id; break 
+                data = None; doc_id = None 
+                doc = db.collection("USUARIOS").document(user_input).get()
+                if doc.exists:
+                    data = doc.to_dict(); doc_id = user_input
+                else:
+                    query = db.collection("USUARIOS").where("nombre_personal", "==", user_input).stream()
+                    for d in query: data = d.to_dict(); doc_id = d.id; break 
 
-            if data:
-                if str(data.get('clave')) == password:
-                    nombre_mostrar = data.get('nombre_personal', doc_id)
-                    if doc_id == "YAKO":
-                        st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
-                    elif data.get('estado') == "ACTIVO":
-                        if data.get('cambio_pendiente', False):
-                            st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
-                        else:
-                            st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
-                    else: st.warning("Cuenta Pendiente / 계정 대기 중")
-                else: st.error("Clave Incorrecta / 비밀번호 오류")
-            else: st.error("Usuario no existe / 사용자 없음")
+                if data:
+                    if str(data.get('clave')) == password:
+                        nombre_mostrar = data.get('nombre_personal', doc_id)
+                        if doc_id == "YAKO":
+                            st.session_state.user = "YAKO"; st.session_state.page = 'menu'; st.rerun()
+                        elif data.get('estado') == "ACTIVO":
+                            if data.get('cambio_pendiente', False):
+                                st.session_state.temp_user = doc_id; st.session_state.page = 'cambio_clave'; st.rerun()
+                            else:
+                                st.session_state.user = nombre_mostrar; st.session_state.page = 'menu'; st.rerun()
+                        else: st.warning("Cuenta Pendiente / 계정 대기 중")
+                    else: st.error("Clave Incorrecta / 비밀번호 오류")
+                else: st.error("Usuario no existe / 사용자 없음")
 
     with col2:
         if st.button("REGISTRARSE / 등록"):
@@ -158,7 +162,6 @@ def formulario():
     st.header(f"{cat} - {tipo_txt}")
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
-    # --- INPUTS CON KEYS PARA PODER LIMPIARLOS ---
     cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기", key="reg_cant")
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
@@ -225,11 +228,9 @@ def formulario():
         st.success("EXITO / 성공")
         
         # --- LIMPIEZA AUTOMÁTICA ---
-        # Borramos las variables de estado
         for key in ["reg_cod", "reg_cant", "reg_conf", "reg_ubi", "reg_dest", "reg_cat", "reg_foto"]:
             if key in st.session_state:
                 del st.session_state[key]
-        
         st.rerun()
         
     if st.button("VOLVER / 돌아가기"): 
@@ -253,9 +254,7 @@ def buscar():
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
-                
-                # --- FILTRO DE LIMPIEZA VISUAL ---
-                # Si la ubicación dice "SALIDA" o "AJUSTE", NO la agregamos a la lista visible.
+                # CORRECCIÓN 3: FILTRAR PALABRA 'AJUSTE' PARA QUE NO SALGA EN EL LETRERO AZUL
                 if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
                     u_list.add(l)
     
@@ -291,16 +290,12 @@ def buscar():
             adj_qty = st.number_input("Cantidad (+/-) / 수량", step=1, value=0, key="adj_qty")
             
         with col_adj3:
-            # --- UBICACIÓN REAL LIMPIA ---
-            # Viene vacío por defecto para que pongas la ubicación real (ej: F1-1)
-            # Si no pones nada, se guardará como vacío o puedes poner un guión.
             adj_ubi_real = st.text_input("Ubicación Real / 실제 위치", value="", placeholder="Ej: F1-1", key="adj_ubi")
         
         st.caption("Ejemplo: 5 (Sumar) / -3 (Restar) / 예: 더하려면 5, 빼려면 -3")
         
         if st.button("CONFIRMAR AJUSTE / 조정 확인", key="btn_conf_adj"):
             if adj_qty != 0:
-                # Usamos la ubicación escrita o "AJUSTE" si se deja vacía para no romper la base de datos
                 ubi_final = adj_ubi_real.upper() if adj_ubi_real else "AJUSTE"
                 
                 db.collection(target_col).add({
@@ -350,6 +345,7 @@ def admin():
         col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"]); 
         col = col_sel.lower()
         c = st.text_input("Código a Borrar / 삭제할 코드").upper()
+        # CORRECCIÓN 2: AGREGAR KEY ÚNICA
         if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제", key="btn_borrar_item"):
             docs = db.collection(col).where("item", "==", c).stream()
             count = 0
@@ -413,6 +409,7 @@ def admin():
                 s = st.selectbox("Usuario / 사용자", us)
                 sid = u_ids[us.index(s)]
                 c1, c2 = st.columns(2)
+                # CORRECCIÓN 2: AGREGAR KEYS ÚNICAS
                 if c1.button("ACTIVAR / 활성화", key="btn_activar_user"): 
                     db.collection("USUARIOS").document(sid).update({"estado": "ACTIVO"}); st.success("OK"); st.rerun()
                 if c2.button("BORRAR / 삭제", key="btn_borrar_user"): 
