@@ -160,13 +160,9 @@ def formulario():
     tipo_txt = "ENTRADA / 입고" if acc == "ENTRADA" else "SALIDA / 출고"
     st.header(f"{cat} - {tipo_txt}")
     
-    # --- MENSAJE DE ÉXITO TRAS RECARGAR ---
-    if 'success_msg' in st.session_state:
-        st.success(st.session_state.success_msg)
-        del st.session_state.success_msg # Borrar mensaje para que no salga siempre
-
     if st.session_state.get('es_invitado', False): st.warning("MODO INVITADO: Solo Salidas / 게스트 모드")
 
+    # INPUTS
     cod = st.text_input("ID / CÓDIGO / 코드", key="reg_cod").upper().strip()
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1, value=None, placeholder="Escribe aquí / 여기에 쓰기", key="reg_cant")
     st.caption("Por seguridad, confirma la cantidad / 보안을 위해 수량을 확인하세요:")
@@ -190,8 +186,17 @@ def formulario():
     st.write("---")
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진", key="reg_foto")
     st.write("---")
-        
-    if st.button("REGISTRAR / 등록"):
+    
+    # BOTÓN DE REGISTRO
+    boton_registrar = st.button("REGISTRAR / 등록")
+
+    # --- MENSAJE DE ÉXITO (ABAJO DEL BOTÓN) ---
+    if 'success_msg' in st.session_state:
+        st.success(st.session_state.success_msg)
+        # Lo borramos para que si recarga manual no salga
+        del st.session_state.success_msg
+
+    if boton_registrar:
         if not cod: st.error("Falta Código / 코드 필요"); return
         if cant is None or conf is None: st.error("Faltan Cantidades / 수량 필요"); return
         if cant != conf: st.error(f"❌ ERROR: Las cantidades no coinciden / 수량 불일치 ({cant} vs {conf})"); return
@@ -232,15 +237,13 @@ def formulario():
         db.collection(st.session_state.categoria).add(datos_guardar)
         
         # --- PREPARAR LIMPIEZA Y RECARGA ---
-        # 1. Guardar mensaje de éxito en sesión para mostrarlo DESPUÉS del rerun
         st.session_state.success_msg = "✅ CARGA EXITOSA / 업로드 성공 - LISTO PARA EL SIGUIENTE / 다음 항목 준비 완료"
         
-        # 2. Borrar las llaves de los inputs para limpiar el formulario
+        # Borrar Inputs
         for key in ["reg_cod", "reg_cant", "reg_conf", "reg_ubi", "reg_dest", "reg_cat", "reg_foto"]:
             if key in st.session_state:
                 del st.session_state[key]
         
-        # 3. Recargar la página
         st.rerun()
         
     if st.button("VOLVER / 돌아가기"): 
@@ -264,6 +267,7 @@ def buscar():
             for d in docs:
                 dt = d.to_dict(); s += dt.get('cantidad', 0)
                 l = dt.get('ubicacion', '').upper()
+                # FILTRO: No mostrar "SALIDA" ni "AJUSTE"
                 if "SALIDA" not in l and "AJUSTE" not in l and l != "": 
                     u_list.add(l)
     
