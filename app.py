@@ -40,6 +40,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; text-align: center; }
     .qr-box { background-color: white; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; display: inline-block; color: black; border: 3px solid red; }
     </style>
     """, unsafe_allow_html=True)
@@ -127,16 +128,13 @@ def formulario():
     cat = st.session_state.categoria; acc = st.session_state.accion
     st.header(f"{cat.upper()} - {acc}")
     
-    # --- ESCÁNER PARA TODOS LOS MOVIMIENTOS ---
     with st.expander("📷 LECTOR QR-BARRA / 스캔"):
         cam = st.camera_input("Captura el código / 코드를 찍으세요")
         if cam:
-            # Simulamos la extracción del ID (puedes escribir el ID en un papel y tomarle foto)
             st.session_state.scanned_id = "SCANNED_ID" 
-            st.info("Código detectado. Revisa el campo de ID abajo.")
+            st.info("Código detectado.")
 
     cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
-    
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1)
     conf_cant = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, step=1)
     
@@ -152,7 +150,7 @@ def formulario():
     if st.button("REGISTRAR / 등록"):
         if not cod: st.error("Falta Código / 코드 필요"); return
         if cant != conf_cant: st.error("Las cantidades no coinciden / 수량 불일치"); return
-        if acc == "SALIDA" and not quien: st.error("Debe indicar quién retira / 수령자 필요"); return
+        if acc == "SALIDA" and not quien: st.error("Debe indicar quién retira"); return
 
         url_f = "NO FOTO"
         if foto:
@@ -213,8 +211,9 @@ def buscar():
                 st.session_state.search_input = ""
                 st.rerun()
 
+            # --- SEGURIDAD: SOLO YAKO PUEDE VER ESTE PANEL ---
             if st.session_state.user_status == "YAKO":
-                st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO</h3>', unsafe_allow_html=True)
+                st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-)", step=1)
                 au = st.text_input("Ubicación Real").upper()
                 if st.button("CONFIRMAR AJUSTE"):
@@ -225,10 +224,10 @@ def buscar():
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
+    # Solo YAKO puede ver esto por seguridad
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        st.subheader("Eliminar Registros")
         col_db = st.selectbox("Categoría / 카테고리", ["materiales", "holders"])
         c_del = st.text_input("ID a Borrar").upper()
         if st.button("BORRAR DEFINITIVAMENTE"):
@@ -237,40 +236,28 @@ def admin():
             st.success("Borrado")
 
     with t2:
-        st.subheader("Generar Reportes")
         ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
         if st.button("GENERAR EXCEL (CSV) / 엑셀 생성"):
             data_e = []
             for d in db.collection(ce_s).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0); item_id = dt.get('item', '')
                 qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item_id}"
-                data_e.append({
-                    "FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, 
-                    "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
-                    "SOLICITANTE": dt.get('solicitante', 'ALMACEN'),
-                    "FOTO": dt.get('foto_url'), "QR_LINK": qr_link
-                })
+                data_e.append({"FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')), "SOLICITANTE": dt.get('solicitante', 'ALMACEN'), "FOTO": dt.get('foto_url'), "QR_LINK": qr_link})
             if data_e:
                 df = pd.DataFrame(data_e)
                 csv = df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("DESCARGAR / 다운로드", csv, f"reporte_{ce_s}.csv", "text/csv")
 
     with t3:
-        st.subheader("Carga Masiva")
         txt = st.text_area("ID CANT UBICACION")
         if st.button("CARGAR LISTA / 업로드"):
             for l in txt.split('\n'):
                 p = l.split()
                 if len(p)>=3:
-                    db.collection("materiales").add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d"),
-                        "item": p[0].upper(), "cantidad": int(p[1]),
-                        "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
-                    })
+                    db.collection("materiales").add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"})
             st.success("Cargado")
 
     with t4:
-        st.subheader("Perfil")
         if st.session_state.user_status == "YAKO":
             new_p = st.text_input("Nueva Clave Yako", type="password")
             if st.button("ACTUALIZAR"):
@@ -278,7 +265,6 @@ def admin():
                 st.success("OK")
 
     with t5:
-        st.subheader("Usuarios")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
