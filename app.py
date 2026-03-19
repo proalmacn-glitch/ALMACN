@@ -26,7 +26,7 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- ESTILOS VISUALES (RESTAURADOS) ---
+# --- ESTILOS VISUALES ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -91,9 +91,6 @@ def login():
             st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
-    
-    # GIF DE CARGA ACTIVO
-    st.write("")
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -121,45 +118,35 @@ def menu():
         if st.session_state.user_status == "YAKO":
             if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
         if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
-    
     with col_gf:
-        # GIF DE TRABAJO ACTIVO
         st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHV3YjNoYXFxYXA4MDl5Z3NyYWpkM2w5MDR0dnE3YWJjMGVuaTNpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/jTYy5WWGYTBp610Ddd/giphy.gif", use_column_width=True)
 
 def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat; st.session_state.page = 'form'; st.rerun()
 
 def formulario():
-    cat = st.session_state.categoria.upper(); acc = st.session_state.accion
-    st.header(f"{cat} - {acc}")
+    cat = st.session_state.categoria; acc = st.session_state.accion
+    st.header(f"{cat.upper()} - {acc}")
     cod = st.text_input("ID / CÓDIGO / 코드").upper().strip()
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1)
-    
-    if acc == "ENTRADA":
-        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
-        dest = "ALMACEN"
-    else:
-        ubi = "SALIDA"
-        dest = st.text_input("QUIEN RETIRA / 수령자").upper().strip()
-
+    ubi = st.text_input("UBICACIÓN / 위치").upper().strip() if acc == "ENTRADA" else "SALIDA"
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진")
     
     if st.button("REGISTRAR / 등록"):
-        url_foto = "NO FOTO"
+        url_f = "NO FOTO"
         if foto:
             try:
                 bucket = storage.bucket()
                 blob = bucket.blob(f"evidencias/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{cod}.jpg")
                 blob.upload_from_file(foto, content_type='image/jpeg')
-                blob.make_public(); url_foto = blob.public_url
-            except: url_foto = "ERROR_SUBIDA"
+                blob.make_public(); url_f = blob.public_url
+            except: url_f = "ERROR_SUBIDA"
 
-        db.collection(st.session_state.categoria).add({
+        db.collection(cat).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "item": cod, "cantidad": cant if acc == "ENTRADA" else -cant,
-            "ubicacion": ubi, "registrado_por": st.session_state.user, "solicitante": dest, "foto_url": url_foto
+            "ubicacion": ubi, "registrado_por": st.session_state.user, "foto_url": url_f
         })
-        
         st.success("✅ ÉXITO / 성공")
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={cod}"
         st.markdown(f'<div class="qr-box"><img src="{qr_url}"><br><b style="color:black;">{cod}</b></div>', unsafe_allow_html=True)
@@ -193,39 +180,61 @@ def buscar():
                 aq = st.number_input("Ajuste Cantidad (+/-)", step=1)
                 au = st.text_input("Ubicación Real").upper()
                 if st.button("CONFIRMAR AJUSTE"):
-                    db.collection(col_found).add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE",
-                        "registrado_por": "YAKO", "solicitante": "AJUSTE", "foto_url": "NO FOTO"
-                    })
+                    db.collection(col_found).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE", "registrado_por": "YAKO", "foto_url": "NO FOTO", "tipo": "AJUSTE"})
                     st.success("Ajustado"); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
+# ================= PANEL ADMIN RESTAURADO =================
+
 def admin():
     st.title("PANEL ADMIN / 관리자")
-    t1, t2, t3 = st.tabs(["USUARIOS / 사용자", "EXCEL", "STOCK"])
+    # Pestañas restauradas tal como estaban
+    t1, t2, t3 = st.tabs(["USUARIOS / 사용자", "EXCEL / EXPORTAR", "STOCK / CARGA"])
+    
     with t1:
+        st.subheader("Control de Usuarios")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
-            st.write(f"ID: {u.id} | Personal: {ud.get('nombre_personal')} | Status: {ud.get('estado')}")
-            if st.button(f"ACTIVAR {u.id}"):
-                db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"})
-                st.rerun()
+            if u.id != "YAKO":
+                col_u, col_b = st.columns([3, 1])
+                col_u.write(f"**ID:** {u.id} | **Nombre:** {ud.get('nombre_personal')} | **Status:** {ud.get('estado')}")
+                if col_b.button("ACTIVAR / 활성화", key=u.id):
+                    db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"})
+                    st.success(f"Usuario {u.id} activado"); st.rerun()
+
     with t2:
-        if st.button("DESCARGAR MATERIALES"):
-            df = pd.DataFrame([d.to_dict() for d in db.collection("materiales").stream()])
-            st.download_button("Bajar CSV", df.to_csv(index=False).encode('utf-8-sig'), "materiales.csv")
+        st.subheader("Generar Reportes")
+        ce_s = st.selectbox("Selecciona Categoría", ["materiales", "holders"])
+        if st.button("GENERAR EXCEL (CSV)"):
+            data_e = [d.to_dict() for d in db.collection(ce_s).stream()]
+            if data_e:
+                df = pd.DataFrame(data_e)
+                csv = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar Archivo", csv, f"{ce_s}_reporte.csv", "text/csv")
+            else: st.warning("No hay datos")
+
     with t3:
-        lista = st.text_area("ID CANT UBICACION")
-        if st.button("CARGAR MASIVA"):
+        st.subheader("Carga Masiva de Stock")
+        st.write("Formato: **CODIGO CANTIDAD UBICACION** (separados por espacio)")
+        lista = st.text_area("Pega tu lista aquí")
+        if st.button("SUBIR A FIREBASE"):
+            count = 0
             for l in lista.split('\n'):
                 p = l.split()
-                if len(p)>=3: db.collection("materiales").add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"})
-            st.success("Cargado")
-    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
+                if len(p) >= 3:
+                    db.collection("materiales").add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d"),
+                        "item": p[0].upper(), "cantidad": int(p[1]),
+                        "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
+                    })
+                    count += 1
+            st.success(f"Se cargaron {count} registros correctamente.")
 
+    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+
+# --- RUTAS ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
