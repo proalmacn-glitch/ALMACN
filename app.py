@@ -5,6 +5,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import random
+import requests
+from io import BytesIO
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -39,7 +41,7 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; text-align: center; }
-    .qr-box { background-color: white; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; display: inline-block; color: black; }
+    .qr-box { background-color: white; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; display: inline-block; color: black; border: 3px solid red; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -67,7 +69,8 @@ def login():
                 for d in query: data = d.to_dict(); doc_id = d.id; break 
             
             if data and str(data.get('clave')) == password:
-                st.session_state.user = data.get('nombre_personal', doc_id)
+                nombre_completo = data.get('nombre_personal', doc_id)
+                st.session_state.user = nombre_completo.split()[0] 
                 st.session_state.user_status = data.get('estado', 'PENDIENTE')
                 if doc_id == "YAKO": st.session_state.user_status = "YAKO"
                 st.session_state.page = 'menu'; st.rerun()
@@ -78,10 +81,9 @@ def login():
             u = f"USUARIO{random.randint(100, 999)}"
             p = f"PASS{random.randint(10, 99)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
-            st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
+            st.success(f"User: {u}\nPass: {p}")
 
     st.divider()
-    st.markdown("<h4 style='color: yellow !important;'>SALIDA RÁPIDA (SIN LOGIN) / 빠른 출고</h4>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
         if st.button("SALIDA MATERIALES / 자재 출고"): 
@@ -95,31 +97,26 @@ def login():
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user} ({st.session_state.user_status})")
-    
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT / 자재 입고"): 
+        if st.button("ENTRADA MAT"): 
             if st.session_state.user_status in ["ACTIVO", "YAKO"]: ir("ENTRADA", "materiales")
-            else: st.error("SOLO PERSONAL AUTORIZADO / 승인된 인원만 가능")
-        if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
+            else: st.error("SOLO PERSONAL AUTORIZADO")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL / 홀더 입고"): 
+        if st.button("ENTRADA HOL"): 
             if st.session_state.user_status in ["ACTIVO", "YAKO"]: ir("ENTRADA", "holders")
-            else: st.error("SOLO PERSONAL AUTORIZADO / 승인된 인원만 가능")
-        if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+            else: st.error("SOLO PERSONAL AUTORIZADO")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
 
     st.divider()
-    col_bt, col_gf = st.columns([1.5, 1])
-    with col_bt:
-        if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-        if st.session_state.user_status == "YAKO":
-            if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-        if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
-    with col_gf:
-        st.image("https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExZHV3YjNoYXFxYXA4MDl5Z3NyYWpkM2w5MDR0dnE3YWJjMGVuaTNpcSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/jTYy5WWGYTBp610Ddd/giphy.gif", use_column_width=True)
+    if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.session_state.user_status == "YAKO":
+        if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
+    if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
 
 def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat; st.session_state.page = 'form'; st.rerun()
@@ -142,14 +139,22 @@ def formulario():
                 blob.make_public(); url_f = blob.public_url
             except: url_f = "ERROR_SUBIDA"
 
-        db.collection(cat).add({
+        db.collection(st.session_state.categoria).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "item": cod, "cantidad": cant if acc == "ENTRADA" else -cant,
             "ubicacion": ubi, "registrado_por": st.session_state.user, "foto_url": url_f
         })
+        
         st.success("✅ ÉXITO / 성공")
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={cod}"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={cod}"
         st.markdown(f'<div class="qr-box"><img src="{qr_url}"><br><b style="color:black;">{cod}</b></div>', unsafe_allow_html=True)
+        
+        # --- BOTÓN PARA DESCARGAR QR INDIVIDUAL ---
+        try:
+            qr_content = requests.get(qr_url).content
+            st.download_button(label="📥 DESCARGAR QR (PNG)", data=qr_content, file_name=f"QR_{cod}.png", mime="image/png")
+        except: pass
+        
         if st.button("SIGUIENTE / 다음"): st.rerun()
 
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
@@ -175,6 +180,10 @@ def buscar():
             c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
             if f_url: st.image(f_url, caption=f"ID: {c}")
             
+            # MOSTRAR QR EN BÚSQUEDA TAMBIÉN
+            qr_busq = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
+            st.markdown(f'<div class="qr-box"><img src="{qr_busq}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
+            
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-)", step=1)
@@ -185,93 +194,77 @@ def buscar():
                 st.markdown('</div>', unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
-# ================= PANEL ADMIN RESTAURADO CON 5 TABS =================
-
 def admin():
     st.title("PANEL ADMIN / 관리자")
-    # Pestañas restauradas tal como las pediste originalmente
-    tab_list = ["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"]
-    t1, t2, t3, t4, t5 = st.tabs(tab_list)
+    t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
         st.subheader("Eliminar Registros")
-        col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"])
-        col_db = col_sel.lower()
-        c_del = st.text_input("Código a Borrar / 삭제할 코드").upper()
-        if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제"):
+        col_db = st.selectbox("Categoría / 카테고리", ["materiales", "holders"])
+        c_del = st.text_input("Código a Borrar").upper()
+        if st.button("BORRAR DEFINITIVAMENTE"):
             docs_del = db.collection(col_db).where("item", "==", c_del).stream()
-            count = 0
-            for d in docs_del: 
-                db.collection(col_db).document(d.id).delete()
-                count += 1
-            st.success(f"Se borraron {count} registros.")
-        
-        st.divider()
-        st.markdown("### ⚠️ ZONA DE PELIGRO")
-        if st.button("🔥 BORRAR TODA LA COLECCIÓN 🔥"):
-            all_docs = db.collection(col_db).stream()
-            for ad in all_docs: db.collection(col_db).document(ad.id).delete()
-            st.success("Colección vaciada.")
+            for d in docs_del: db.collection(col_db).document(d.id).delete()
+            st.success("Borrado")
 
     with t2:
-        st.subheader("Generar Reportes")
+        st.subheader("Generar Reportes con QR")
         ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
         if st.button("GENERAR EXCEL (CSV)"):
             data_e = []
             for d in db.collection(ce_s).stream():
-                dt = d.to_dict(); q = dt.get('cantidad', 0)
+                dt = d.to_dict(); q = dt.get('cantidad', 0); item_id = dt.get('item', '')
+                # Creamos el link del QR para cada celda
+                qr_link_celda = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item_id}"
                 data_e.append({
-                    "FECHA / 날짜": dt.get('fecha'), 
-                    "REGISTRADO POR / 등록자": dt.get('registrado_por'), 
-                    "ITEM / 항목": dt.get('item'), 
-                    "CANTIDAD / 수량": q, 
-                    "UBICACIÓN / 위치": dt.get('ubicacion', dt.get('ubi', '')),
-                    "FOTO / 사진": dt.get('foto_url')
+                    "FECHA": dt.get('fecha'), 
+                    "REGISTRADO POR": dt.get('registrado_por'), 
+                    "ITEM": item_id, 
+                    "CANTIDAD": q, 
+                    "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
+                    "FOTO": dt.get('foto_url'),
+                    "QR_CODE_LINK": qr_link_celda # ESTE ES EL LINK PARA EL EXCEL
                 })
             if data_e:
                 df = pd.DataFrame(data_e)
                 csv = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Bajar Archivo", csv, f"reporte_{ce_s}.csv", "text/csv")
+                st.download_button("DESCARGAR / 다운로드", csv, f"reporte_{ce_s}.csv", "text/csv")
 
     with t3:
-        st.subheader("Carga Masiva de Stock")
-        st.write("Formato: **CODIGO CANTIDAD UBICACION**")
-        lista = st.text_area("Pega tu lista aquí (separada por espacios)")
-        if st.button("SUBIR A FIREBASE / 업로드"):
-            count = 0
-            for l in lista.split('\n'):
+        st.subheader("Carga Masiva")
+        txt = st.text_area("ID CANT UBICACION")
+        if st.button("CARGAR LISTA"):
+            for l in txt.split('\n'):
                 p = l.split()
-                if len(p) >= 3:
+                if len(p)>=3:
                     db.collection("materiales").add({
                         "fecha": datetime.now().strftime("%Y-%m-%d"),
                         "item": p[0].upper(), "cantidad": int(p[1]),
                         "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
                     })
-                    count += 1
-            st.success(f"Carga de {count} registros exitosa.")
+            st.success("Cargado")
 
     with t4:
-        st.subheader("Perfil de Administrador")
-        if st.session_state.user == "YAKO":
-            new_n = st.text_input("Nuevo Nombre Yako", value=st.session_state.user)
+        st.subheader("Perfil")
+        if st.session_state.user_status == "YAKO":
             new_p = st.text_input("Nueva Clave Yako", type="password")
-            if st.button("ACTUALIZAR PERFIL"):
-                db.collection("USUARIOS").document("YAKO").update({"nombre_personal": new_n, "clave": new_p})
-                st.success("Perfil actualizado correctamente.")
+            if st.button("ACTUALIZAR"):
+                db.collection("USUARIOS").document("YAKO").update({"clave": new_p})
+                st.success("OK")
 
     with t5:
-        st.subheader("Aprobación de Usuarios")
+        st.subheader("Usuarios")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
             if u.id != "YAKO":
                 col_u, col_b = st.columns([3, 1])
-                col_u.write(f"**ID:** {u.id} | **Status:** {ud.get('estado')}")
+                col_u.write(f"ID: {u.id} | Status: {ud.get('estado')}")
                 if col_b.button("ACTIVAR / 활성화", key=u.id):
                     db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"})
-                    st.success(f"Usuario {u.id} activado"); st.rerun()
+                    st.rerun()
 
-    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 # --- RUTAS ---
 if st.session_state.page == 'login': login()
