@@ -186,22 +186,36 @@ def buscar():
     c = st.text_input("ID / CÓDIGO / 코드", key="search_input").upper().strip()
     if c:
         stock = 0; u_list = set(); f_url = None; col_found = None
+        ubicacion_prioritaria = None # Nueva variable para guardar el ajuste de YAKO
+
         for col in ["materiales", "holders"]:
             docs = db.collection(col).where("item", "==", c).stream()
             for d in docs:
                 col_found = col
                 dt = d.to_dict(); stock += dt.get('cantidad', 0)
+                
+                # Extraemos la ubicación
                 l = str(dt.get('ubicacion', dt.get('ubi', ''))).upper()
+                
+                # LÓGICA DE AJUSTE: Si el registro fue hecho por YAKO o marcado como AJUSTE
+                if dt.get('tipo') == "AJUSTE" or dt.get('registrado_por') == "YAKO":
+                    if l and "SALIDA" not in l and l != "NONE" and l != "AJUSTE":
+                        ubicacion_prioritaria = l
+                
+                # Guardamos ubicaciones normales (si no hay ajuste aún)
                 if l and "SALIDA" not in l and l != "NONE" and l != "": u_list.add(l)
+                
                 if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR"]: f_url = dt.get('foto_url')
         
         if col_found:
             st.subheader(f"RESULTADO: {c}")
             c1, c2 = st.columns(2)
             c1.metric("STOCK / 재고", stock)
-            c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
             
-            # PROTECCION CONTRA MENSAJE ROJO
+            # --- MOSTRAR SOLO LA UBICACIÓN DE YAKO SI EXISTE ---
+            ubi_mostrar = ubicacion_prioritaria if ubicacion_prioritaria else (", ".join(u_list) if u_list else "---")
+            c2.metric("UBICACIÓN / 위치", ubi_mostrar)
+
             if f_url:
                 try: st.image(f_url, caption=f"ID: {c}")
                 except: st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
@@ -213,11 +227,10 @@ def buscar():
                 st.session_state.search_input = ""
                 st.rerun()
 
-            # --- SEGURIDAD: SOLO YAKO VE Y REALIZA AJUSTES ---
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-) / 수량 조정", step=1, key="aq_val")
-                au = st.text_input("Ubicación Real / 실제 위치", key="au_val").upper()
+                au = st.text_input("Nueva Ubicación Real / 실제 위치", key="au_val").upper()
                 if st.button("CONFIRMAR AJUSTE / 조정 확인"):
                     db.collection(col_found).add({
                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -234,7 +247,6 @@ def buscar():
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
-    # Solo YAKO puede ver esto por seguridad
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
@@ -254,32 +266,11 @@ def admin():
             for d in db.collection(ce_s).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0); item_id = dt.get('item', '')
                 qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item_id}"
-                
-                # --- CORRECCIÓN CRÍTICA DE UBICACIÓN EN EXCEL ---
-                # Si es Entrada, ubi física. Si es Salida o Ajuste, a quién se entregó.
-                ubi_final_excel = dt.get('ubicacion', dt.get('ubi', ''))
-                solicitante_excel = dt.get('solicitante', '')
-                
-                # Regla de Negocio: Para reportes, la 'ubicación' debe mostrar el destino final.
-                # Si hay solicitante y es salida o ajuste, mostramos el solicitante como destino.
-                if q < 0 and solicitante_excel and solicitante_excel != 'ALMACEN':
-                    ubi_final_excel = solicitante_excel
-                elif solicitante_excel == 'AJUSTE':
-                     ubi_final_excel = solicitante_excel # Mantenemos 'AJUSTE' solo si tú lo pusiste como destino real.
-
-                # Eliminamos la palabra técnica 'ALMACEN' si está como solicitante por defecto.
-                if solicitante_excel == 'ALMACEN':
-                    solicitante_excel = '' 
-
                 data_e.append({
-                    "FECHA": dt.get('fecha'), 
-                    "REGISTRADO POR": dt.get('registrado_por'), 
-                    "ITEM": item_id, 
-                    "CANTIDAD": q, 
-                    "UBICACIÓN / DESTINO": ubi_final_excel, # Columna unificada y limpia
-                    "ENTREGADO A": solicitante_excel, # Muestra quién lo tiene
-                    "FOTO": dt.get('foto_url'), 
-                    "QR_LINK": qr_link
+                    "FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, 
+                    "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
+                    "SOLICITANTE": dt.get('solicitante', 'ALMACEN'),
+                    "FOTO": dt.get('foto_url'), "QR_LINK": qr_link
                 })
             if data_e:
                 df = pd.DataFrame(data_e)
@@ -293,7 +284,11 @@ def admin():
             for l in txt.split('\n'):
                 p = l.split()
                 if len(p)>=3:
-                    db.collection("materiales").add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"})
+                    db.collection("materiales").add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d"),
+                        "item": p[0].upper(), "cantidad": int(p[1]),
+                        "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
+                    })
             st.success("Cargado")
 
     with t4:
