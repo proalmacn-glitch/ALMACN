@@ -12,8 +12,10 @@ st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered
 # --- CONEXIÓN FIREBASE ---
 if not firebase_admin._apps:
     try:
-        bucket_name = 'almacnn.firebasestorage.app'
+        # VERIFICA ESTE NOMBRE EN TU CONSOLA DE FIREBASE (STORAGE)
+        bucket_name = 'almacnn.firebasestorage.app' 
         cred_path = "Key.json"
+        
         if os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
@@ -38,7 +40,6 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 55px !important; color: cyan !important; text-align: center !important; font-weight: bold !important; }
     div[data-testid="stMetricLabel"] { font-size: 20px !important; color: white !important; text-align: center !important; justify-content: center !important; }
     div[data-testid="stMetric"] { display: flex; flex-direction: column; align-items: center; background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
-    .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; }
     .img-container { border: 2px solid #333; border-radius: 10px; padding: 5px; background-color: #000; text-align: center; margin-top: 10px; }
     </style>
     """, unsafe_allow_html=True)
@@ -149,13 +150,20 @@ def formulario():
     foto = st.camera_input("FOTO EVIDENCIA", key="reg_foto")
     
     if st.button("REGISTRAR / 등록"):
+        if not cod: st.error("Falta código"); return
         if cant != conf: st.error("Cantidades no coinciden"); return
+        
         url_foto = "NO FOTO"
         if foto:
-            bucket = storage.bucket()
-            blob = bucket.blob(f"evidencias/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{cod}.jpg")
-            blob.upload_from_file(foto, content_type='image/jpeg')
-            blob.make_public(); url_foto = blob.public_url
+            try:
+                bucket = storage.bucket()
+                blob = bucket.blob(f"evidencias/{datetime.now().strftime('%Y%m%d_%H%M%S')}_{cod}.jpg")
+                blob.upload_from_file(foto, content_type='image/jpeg')
+                blob.make_public()
+                url_foto = blob.public_url
+            except Exception as e:
+                st.error(f"Error al subir foto (Verifica el nombre del Bucket): {e}")
+                url_foto = "ERROR_SUBIDA"
 
         db.collection(st.session_state.categoria).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -199,15 +207,18 @@ def buscar():
             stock += dt.get('cantidad', 0)
             u = dt.get('ubicacion', '').upper()
             if u and "SALIDA" not in u: ubi_list.add(u)
-            if dt.get('foto_url') and dt.get('foto_url') != "NO FOTO": ultima_foto = dt.get('foto_url')
+            # Solo guardamos la foto si realmente existe una URL válida
+            f_url = dt.get('foto_url')
+            if f_url and f_url not in ["NO FOTO", "ERROR_SUBIDA"]:
+                ultima_foto = f_url
 
         st.markdown(f"<h2 style='color: white !important;'>RESULTADO: {final_code}</h2>", unsafe_allow_html=True)
         c1, c2 = st.columns(2)
-        c1.metric("STOCK / 재고", stock)
-        c2.metric("UBICACIÓN / 위치", ", ".join(ubi_list) if ubi_list else "---")
+        with c1: st.metric("STOCK / 재고", stock)
+        with c2: st.metric("UBICACIÓN / 위치", ", ".join(ubi_list) if ubi_list else "---")
         
         if ultima_foto:
-            st.markdown("<h4 style='color: yellow !important;'>FOTO REGISTRADA:</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='color: yellow !important;'>FOTO REGISTRADA / 등록된 사진:</h4>", unsafe_allow_html=True)
             st.markdown(f'<div class="img-container"><img src="{ultima_foto}" style="width:100%;"></div>', unsafe_allow_html=True)
 
     if st.button("VOLVER / 돌아가기"):
@@ -219,4 +230,3 @@ if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
-elif st.session_state.page == 'admin': admin() # Asumiendo que existe la función admin() del código previo
