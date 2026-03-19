@@ -129,12 +129,28 @@ def ir(acc, cat):
 def formulario():
     cat = st.session_state.categoria; acc = st.session_state.accion
     st.header(f"{cat.upper()} - {acc}")
+    
     cod = st.text_input("ID / CÓDIGO / 코드").upper().strip()
+    
+    # --- CONFIRMACIÓN DE CANTIDAD ENTRADA Y SALIDA ---
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1)
-    ubi = st.text_input("UBICACIÓN / 위치").upper().strip() if acc == "ENTRADA" else "SALIDA"
+    conf_cant = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, step=1)
+    
+    if acc == "ENTRADA":
+        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
+        quien = "ALMACEN"
+    else:
+        ubi = "SALIDA"
+        # --- QUIEN RETIRA EN SALIDA ---
+        quien = st.text_input("QUIEN RETIRA / 수령자").upper().strip()
+
     foto = st.camera_input("FOTO EVIDENCIA / 증거 사진")
     
     if st.button("REGISTRAR / 등록"):
+        if not cod: st.error("Falta Código / 코드 필요"); return
+        if cant != conf_cant: st.error("Las cantidades no coinciden / 수량 불일치"); return
+        if acc == "SALIDA" and not quien: st.error("Debe indicar quién retira / 수령자를 입력하세요"); return
+
         url_f = "NO FOTO"
         if foto:
             try:
@@ -147,7 +163,7 @@ def formulario():
         db.collection(st.session_state.categoria).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "item": cod, "cantidad": cant if acc == "ENTRADA" else -cant,
-            "ubicacion": ubi, "registrado_por": st.session_state.user, "foto_url": url_f
+            "ubicacion": ubi, "registrado_por": st.session_state.user, "solicitante": quien, "foto_url": url_f
         })
         
         st.success("✅ ÉXITO / 성공")
@@ -184,17 +200,16 @@ def buscar():
             c1.metric("STOCK / 재고", stock)
             c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
             
-            # --- PROTECCIÓN CONTRA EL MENSAJE ROJO ---
+            # --- EVITAR ERROR ROJO EN IMÁGENES ---
             if f_url:
                 try:
                     st.image(f_url, caption=f"ID: {c}")
-                except Exception:
+                except:
                     st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
             
             qr_busq = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
             st.markdown(f'<div class="qr-box"><img src="{qr_busq}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
             
-            # Botón para limpiar búsqueda
             if st.button("NUEVA BÚSQUEDA / 새로운 검색"):
                 st.session_state.search_input = ""
                 st.rerun()
@@ -237,6 +252,7 @@ def admin():
                 data_e.append({
                     "FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, 
                     "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
+                    "SOLICITANTE": dt.get('solicitante', 'ALMACEN'),
                     "FOTO": dt.get('foto_url'), "QR_LINK": qr_link
                 })
             if data_e:
