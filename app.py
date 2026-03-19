@@ -215,7 +215,7 @@ def formulario():
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
             "item": cod, 
             "cantidad": val, 
-            "ubicacion": ubi, 
+            "ubi": ubi, 
             "registrado_por": st.session_state.user, 
             "solicitante": dest, 
             "foto_url": url_foto
@@ -266,7 +266,7 @@ def buscar():
         for dr in docs_res:
             dt_r = dr.to_dict()
             s += dt_r.get('cantidad', 0)
-            l = dt_r.get('ubicacion', '').upper()
+            l = dt_r.get('ubi', '').upper()
             if "SALIDA" not in l and "AJUSTE" not in l and l != "": u_list.add(l)
             if dt_r.get('foto_url') and dt_r.get('foto_url') not in ["NO FOTO", "ERROR"]:
                 foto_mostrar = dt_r.get('foto_url')
@@ -279,9 +279,13 @@ def buscar():
         st.divider()
         
         if foto_mostrar:
-            st.markdown('<div class="img-container">', unsafe_allow_html=True)
-            st.image(foto_mostrar, caption=f"ID: {final_code_to_use}")
-            st.markdown('</div>', unsafe_allow_html=True)
+            # BLOQUE DE SEGURIDAD PARA LA IMAGEN
+            try:
+                st.markdown('<div class="img-container">', unsafe_allow_html=True)
+                st.image(foto_mostrar, caption=f"ID: {final_code_to_use}")
+                st.markdown('</div>', unsafe_allow_html=True)
+            except:
+                st.info("Imagen no disponible temporalmente / 사진을 현재 사용할 수 없습니다")
 
         if st.session_state.user == "YAKO":
             st.markdown("""<div class="yako-adjust"><h3>⚠️ ADMIN PANEL (YAKO)</h3></div>""", unsafe_allow_html=True)
@@ -292,7 +296,7 @@ def buscar():
             with ca3: au = st.text_input("Ubicación Real", key="au").upper()
             if st.button("CONFIRMAR AJUSTE"):
                 if aq != 0:
-                    db.collection(coleccion_detectada).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": final_code_to_use, "cantidad": aq, "ubicacion": au if au else "AJUSTE", "registrado_por": "YAKO", "solicitante": "AJUSTE", "foto_url": "NO FOTO", "tipo": "AJUSTE"})
+                    db.collection(coleccion_detectada).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": final_code_to_use, "cantidad": aq, "ubi": au if au else "AJUSTE", "registrado_por": "YAKO", "solicitante": "AJUSTE", "foto_url": "NO FOTO", "tipo": "AJUSTE"})
                     st.success("Ajustado"); st.rerun()
 
             st.divider()
@@ -300,7 +304,7 @@ def buscar():
             nh = st.text_input("Nueva Ubicación Única").upper()
             if st.button("ACTUALIZAR TODO EL HISTORIAL"):
                 docs_up = db.collection(coleccion_detectada).where("item", "==", final_code_to_use).stream()
-                for du in docs_up: db.collection(coleccion_detectada).document(du.id).update({"ubicacion": nh})
+                for du in docs_up: db.collection(coleccion_detectada).document(du.id).update({"ubi": nh})
                 st.success("Ubicaciones actualizadas"); st.rerun()
 
     if st.button("VOLVER / 돌아가기"):
@@ -331,7 +335,7 @@ def admin():
             data_e = []
             for d in db.collection(ce_l).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0)
-                data_e.append({"FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": dt.get('item'), "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion'), "SOLICITANTE": dt.get('solicitante'), "FOTO": dt.get('foto_url')})
+                data_e.append({"FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": dt.get('item'), "CANTIDAD": q, "UBICACIÓN": dt.get('ubi'), "SOLICITANTE": dt.get('solicitante'), "FOTO": dt.get('foto_url')})
             if data_e:
                 df = pd.DataFrame(data_e)
                 csv = df.to_csv(index=False).encode('utf-8-sig')
@@ -343,7 +347,7 @@ def admin():
         if st.button("CARGAR LISTA"):
             for l in txt.split('\n'):
                 p = l.replace('\t', ' ').split()
-                if len(p)>=3: db.collection(cm_l).add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": st.session_state.user, "tipo": "MASIVA", "foto_url": "NO FOTO"})
+                if len(p)>=3: db.collection(cm_l).add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubi": p[2].upper(), "registrado_por": st.session_state.user, "tipo": "MASIVA", "foto_url": "NO FOTO"})
             st.success("Cargado")
 
     with t4:
