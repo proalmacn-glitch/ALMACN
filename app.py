@@ -191,8 +191,9 @@ def buscar():
             for d in docs:
                 col_found = col
                 dt = d.to_dict(); stock += dt.get('cantidad', 0)
+                # SE CORRIGE BUSQUEDA PARA AMBAS LLAVES POSIBLES
                 l = str(dt.get('ubicacion', dt.get('ubi', ''))).upper()
-                if l and "SALIDA" not in l and l != "NONE": u_list.add(l)
+                if l and "SALIDA" not in l and l != "NONE" and l != "": u_list.add(l)
                 if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR"]: f_url = dt.get('foto_url')
         
         if col_found:
@@ -200,9 +201,11 @@ def buscar():
             c1, c2 = st.columns(2)
             c1.metric("STOCK / 재고", stock)
             c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
+            
+            # PROTECCION CONTRA MENSAJE ROJO
             if f_url:
                 try: st.image(f_url, caption=f"ID: {c}")
-                except: st.warning("Imagen no disponible")
+                except: st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
             
             qr_busq = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
             st.markdown(f'<div class="qr-box"><img src="{qr_busq}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
@@ -211,24 +214,32 @@ def buscar():
                 st.session_state.search_input = ""
                 st.rerun()
 
-            # --- SEGURIDAD: SOLO YAKO PUEDE VER ESTE PANEL ---
+            # --- SEGURIDAD REFORZADA: SOLO YAKO VE Y REALIZA AJUSTES ---
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
-                aq = st.number_input("Ajuste Cantidad (+/-)", step=1)
-                au = st.text_input("Ubicación Real").upper()
-                if st.button("CONFIRMAR AJUSTE"):
-                    db.collection(col_found).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE", "registrado_por": "YAKO", "foto_url": "NO FOTO", "tipo": "AJUSTE"})
-                    st.success("Ajustado"); st.rerun()
+                aq = st.number_input("Ajuste Cantidad (+/-) / 수량 조정", step=1, key="aq_val")
+                au = st.text_input("Ubicación Real / 실제 위치", key="au_val").upper()
+                if st.button("CONFIRMAR AJUSTE / 조정 확인"):
+                    db.collection(col_found).add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE",
+                        "registrado_por": "YAKO", "foto_url": "NO FOTO", "tipo": "AJUSTE"
+                    })
+                    st.success("Ajustado / 조정됨"); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
+        else:
+            st.warning("No se encontró el código / 코드를 찾을 수 없습니다")
+
+    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
+        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
-    # Solo YAKO puede ver esto por seguridad
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
-        col_db = st.selectbox("Categoría / 카테고리", ["materiales", "holders"])
+        st.subheader("Eliminar Registros / 기록 삭제")
+        col_db = st.selectbox("Categoría / 카테고리", ["materiales", "holders"], key="admin_del_col")
         c_del = st.text_input("ID a Borrar").upper()
         if st.button("BORRAR DEFINITIVAMENTE"):
             docs_del = db.collection(col_db).where("item", "==", c_del).stream()
@@ -236,25 +247,36 @@ def admin():
             st.success("Borrado")
 
     with t2:
-        ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
-        if st.button("GENERAR EXCEL (CSV) / 엑셀 생성"):
+        st.subheader("Reportes / 보고서")
+        ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"], key="admin_excel_col")
+        if st.button("DESCARGAR / 다운로드"):
             data_e = []
             for d in db.collection(ce_s).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0); item_id = dt.get('item', '')
                 qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item_id}"
-                data_e.append({"FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')), "SOLICITANTE": dt.get('solicitante', 'ALMACEN'), "FOTO": dt.get('foto_url'), "QR_LINK": qr_link})
+                data_e.append({
+                    "FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, 
+                    "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
+                    "SOLICITANTE": dt.get('solicitante', 'ALMACEN'),
+                    "FOTO": dt.get('foto_url'), "QR_LINK": qr_link
+                })
             if data_e:
                 df = pd.DataFrame(data_e)
                 csv = df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("DESCARGAR / 다운로드", csv, f"reporte_{ce_s}.csv", "text/csv")
 
     with t3:
+        st.subheader("Carga Masiva")
         txt = st.text_area("ID CANT UBICACION")
         if st.button("CARGAR LISTA / 업로드"):
             for l in txt.split('\n'):
                 p = l.split()
                 if len(p)>=3:
-                    db.collection("materiales").add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"})
+                    db.collection("materiales").add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d"),
+                        "item": p[0].upper(), "cantidad": int(p[1]),
+                        "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
+                    })
             st.success("Cargado")
 
     with t4:
