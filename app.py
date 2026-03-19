@@ -191,7 +191,6 @@ def buscar():
             for d in docs:
                 col_found = col
                 dt = d.to_dict(); stock += dt.get('cantidad', 0)
-                # SE CORRIGE BUSQUEDA PARA AMBAS LLAVES POSIBLES
                 l = str(dt.get('ubicacion', dt.get('ubi', ''))).upper()
                 if l and "SALIDA" not in l and l != "NONE" and l != "": u_list.add(l)
                 if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR"]: f_url = dt.get('foto_url')
@@ -214,7 +213,7 @@ def buscar():
                 st.session_state.search_input = ""
                 st.rerun()
 
-            # --- SEGURIDAD REFORZADA: SOLO YAKO VE Y REALIZA AJUSTES ---
+            # --- SEGURIDAD: SOLO YAKO VE Y REALIZA AJUSTES ---
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-) / 수량 조정", step=1, key="aq_val")
@@ -235,6 +234,7 @@ def buscar():
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
+    # Solo YAKO puede ver esto por seguridad
     t1, t2, t3, t4, t5 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"])
     
     with t1:
@@ -254,11 +254,32 @@ def admin():
             for d in db.collection(ce_s).stream():
                 dt = d.to_dict(); q = dt.get('cantidad', 0); item_id = dt.get('item', '')
                 qr_link = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={item_id}"
+                
+                # --- CORRECCIÓN CRÍTICA DE UBICACIÓN EN EXCEL ---
+                # Si es Entrada, ubi física. Si es Salida o Ajuste, a quién se entregó.
+                ubi_final_excel = dt.get('ubicacion', dt.get('ubi', ''))
+                solicitante_excel = dt.get('solicitante', '')
+                
+                # Regla de Negocio: Para reportes, la 'ubicación' debe mostrar el destino final.
+                # Si hay solicitante y es salida o ajuste, mostramos el solicitante como destino.
+                if q < 0 and solicitante_excel and solicitante_excel != 'ALMACEN':
+                    ubi_final_excel = solicitante_excel
+                elif solicitante_excel == 'AJUSTE':
+                     ubi_final_excel = solicitante_excel # Mantenemos 'AJUSTE' solo si tú lo pusiste como destino real.
+
+                # Eliminamos la palabra técnica 'ALMACEN' si está como solicitante por defecto.
+                if solicitante_excel == 'ALMACEN':
+                    solicitante_excel = '' 
+
                 data_e.append({
-                    "FECHA": dt.get('fecha'), "REGISTRADO POR": dt.get('registrado_por'), "ITEM": item_id, 
-                    "CANTIDAD": q, "UBICACIÓN": dt.get('ubicacion', dt.get('ubi', '')),
-                    "SOLICITANTE": dt.get('solicitante', 'ALMACEN'),
-                    "FOTO": dt.get('foto_url'), "QR_LINK": qr_link
+                    "FECHA": dt.get('fecha'), 
+                    "REGISTRADO POR": dt.get('registrado_por'), 
+                    "ITEM": item_id, 
+                    "CANTIDAD": q, 
+                    "UBICACIÓN / DESTINO": ubi_final_excel, # Columna unificada y limpia
+                    "ENTREGADO A": solicitante_excel, # Muestra quién lo tiene
+                    "FOTO": dt.get('foto_url'), 
+                    "QR_LINK": qr_link
                 })
             if data_e:
                 df = pd.DataFrame(data_e)
@@ -272,11 +293,7 @@ def admin():
             for l in txt.split('\n'):
                 p = l.split()
                 if len(p)>=3:
-                    db.collection("materiales").add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d"),
-                        "item": p[0].upper(), "cantidad": int(p[1]),
-                        "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
-                    })
+                    db.collection("materiales").add({"fecha": datetime.now().strftime("%Y-%m-%d"), "item": p[0].upper(), "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"})
             st.success("Cargado")
 
     with t4:
