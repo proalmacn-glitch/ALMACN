@@ -185,41 +185,59 @@ def buscar():
                 st.markdown('</div>', unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
-# ================= PANEL ADMIN RESTAURADO =================
+# ================= PANEL ADMIN RESTAURADO CON 5 TABS =================
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
-    # Pestañas restauradas tal como estaban
-    t1, t2, t3 = st.tabs(["USUARIOS / 사용자", "EXCEL / EXPORTAR", "STOCK / CARGA"])
+    # Pestañas restauradas tal como las pediste originalmente
+    tab_list = ["BORRAR/삭제", "EXCEL/엑셀", "STOCK/재고", "PERFIL/프로필", "USUARIOS/사용자"]
+    t1, t2, t3, t4, t5 = st.tabs(tab_list)
     
     with t1:
-        st.subheader("Control de Usuarios")
-        u_docs = db.collection("USUARIOS").stream()
-        for u in u_docs:
-            ud = u.to_dict()
-            if u.id != "YAKO":
-                col_u, col_b = st.columns([3, 1])
-                col_u.write(f"**ID:** {u.id} | **Nombre:** {ud.get('nombre_personal')} | **Status:** {ud.get('estado')}")
-                if col_b.button("ACTIVAR / 활성화", key=u.id):
-                    db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"})
-                    st.success(f"Usuario {u.id} activado"); st.rerun()
+        st.subheader("Eliminar Registros")
+        col_sel = st.selectbox("Categoría / 카테고리", ["MATERIALES", "HOLDERS"])
+        col_db = col_sel.lower()
+        c_del = st.text_input("Código a Borrar / 삭제할 코드").upper()
+        if st.button("BORRAR DEFINITIVAMENTE / 영구 삭제"):
+            docs_del = db.collection(col_db).where("item", "==", c_del).stream()
+            count = 0
+            for d in docs_del: 
+                db.collection(col_db).document(d.id).delete()
+                count += 1
+            st.success(f"Se borraron {count} registros.")
+        
+        st.divider()
+        st.markdown("### ⚠️ ZONA DE PELIGRO")
+        if st.button("🔥 BORRAR TODA LA COLECCIÓN 🔥"):
+            all_docs = db.collection(col_db).stream()
+            for ad in all_docs: db.collection(col_db).document(ad.id).delete()
+            st.success("Colección vaciada.")
 
     with t2:
         st.subheader("Generar Reportes")
-        ce_s = st.selectbox("Selecciona Categoría", ["materiales", "holders"])
+        ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"])
         if st.button("GENERAR EXCEL (CSV)"):
-            data_e = [d.to_dict() for d in db.collection(ce_s).stream()]
+            data_e = []
+            for d in db.collection(ce_s).stream():
+                dt = d.to_dict(); q = dt.get('cantidad', 0)
+                data_e.append({
+                    "FECHA / 날짜": dt.get('fecha'), 
+                    "REGISTRADO POR / 등록자": dt.get('registrado_por'), 
+                    "ITEM / 항목": dt.get('item'), 
+                    "CANTIDAD / 수량": q, 
+                    "UBICACIÓN / 위치": dt.get('ubicacion', dt.get('ubi', '')),
+                    "FOTO / 사진": dt.get('foto_url')
+                })
             if data_e:
                 df = pd.DataFrame(data_e)
                 csv = df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar Archivo", csv, f"{ce_s}_reporte.csv", "text/csv")
-            else: st.warning("No hay datos")
+                st.download_button("Bajar Archivo", csv, f"reporte_{ce_s}.csv", "text/csv")
 
     with t3:
         st.subheader("Carga Masiva de Stock")
-        st.write("Formato: **CODIGO CANTIDAD UBICACION** (separados por espacio)")
-        lista = st.text_area("Pega tu lista aquí")
-        if st.button("SUBIR A FIREBASE"):
+        st.write("Formato: **CODIGO CANTIDAD UBICACION**")
+        lista = st.text_area("Pega tu lista aquí (separada por espacios)")
+        if st.button("SUBIR A FIREBASE / 업로드"):
             count = 0
             for l in lista.split('\n'):
                 p = l.split()
@@ -230,7 +248,28 @@ def admin():
                         "ubicacion": p[2].upper(), "registrado_por": "YAKO", "foto_url": "NO FOTO"
                     })
                     count += 1
-            st.success(f"Se cargaron {count} registros correctamente.")
+            st.success(f"Carga de {count} registros exitosa.")
+
+    with t4:
+        st.subheader("Perfil de Administrador")
+        if st.session_state.user == "YAKO":
+            new_n = st.text_input("Nuevo Nombre Yako", value=st.session_state.user)
+            new_p = st.text_input("Nueva Clave Yako", type="password")
+            if st.button("ACTUALIZAR PERFIL"):
+                db.collection("USUARIOS").document("YAKO").update({"nombre_personal": new_n, "clave": new_p})
+                st.success("Perfil actualizado correctamente.")
+
+    with t5:
+        st.subheader("Aprobación de Usuarios")
+        u_docs = db.collection("USUARIOS").stream()
+        for u in u_docs:
+            ud = u.to_dict()
+            if u.id != "YAKO":
+                col_u, col_b = st.columns([3, 1])
+                col_u.write(f"**ID:** {u.id} | **Status:** {ud.get('estado')}")
+                if col_b.button("ACTIVAR / 활성화", key=u.id):
+                    db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"})
+                    st.success(f"Usuario {u.id} activado"); st.rerun()
 
     if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
