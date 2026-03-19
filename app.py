@@ -165,7 +165,8 @@ def formulario():
 
 def buscar():
     st.header("BUSCAR / 검색")
-    c = st.text_input("ID / CÓDIGO / 코드").upper().strip()
+    c = st.text_input("ID / CÓDIGO / 코드", key="search_input").upper().strip()
+    
     if c:
         stock = 0; u_list = set(); f_url = None; col_found = None
         for col in ["materiales", "holders"]:
@@ -182,11 +183,22 @@ def buscar():
             c1, c2 = st.columns(2)
             c1.metric("STOCK / 재고", stock)
             c2.metric("UBICACIÓN / 위치", ", ".join(u_list) if u_list else "---")
-            if f_url: st.image(f_url, caption=f"ID: {c}")
+            
+            # --- PROTECCIÓN CONTRA EL MENSAJE ROJO ---
+            if f_url:
+                try:
+                    st.image(f_url, caption=f"ID: {c}")
+                except Exception:
+                    st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
             
             qr_busq = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
             st.markdown(f'<div class="qr-box"><img src="{qr_busq}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
             
+            # Botón para limpiar búsqueda
+            if st.button("NUEVA BÚSQUEDA / 새로운 검색"):
+                st.session_state.search_input = ""
+                st.rerun()
+
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-) / 수량 조정", step=1)
@@ -195,7 +207,11 @@ def buscar():
                     db.collection(col_found).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE", "registrado_por": "YAKO", "foto_url": "NO FOTO", "tipo": "AJUSTE"})
                     st.success("Ajustado / 조정됨"); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
+        else:
+            st.warning("No se encontró el código / 코드를 찾을 수 없습니다")
+
+    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
+        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def admin():
     st.title("PANEL ADMIN / 관리자")
