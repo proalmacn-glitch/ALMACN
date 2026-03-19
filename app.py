@@ -185,37 +185,41 @@ def buscar():
     st.header("BUSCAR / 검색")
     c = st.text_input("ID / CÓDIGO / 코드", key="search_input").upper().strip()
     if c:
-        stock = 0; u_list = set(); f_url = None; col_found = None
-        ubicacion_prioritaria = None # Nueva variable para guardar el ajuste de YAKO
+        stock = 0
+        ultima_fecha = ""
+        ultima_ubicacion = "---"
+        f_url = None
+        col_found = None
 
+        # Buscamos en ambas colecciones
         for col in ["materiales", "holders"]:
             docs = db.collection(col).where("item", "==", c).stream()
             for d in docs:
                 col_found = col
-                dt = d.to_dict(); stock += dt.get('cantidad', 0)
+                dt = d.to_dict()
                 
-                # Extraemos la ubicación
-                l = str(dt.get('ubicacion', dt.get('ubi', ''))).upper()
+                # Cálculo de Stock
+                stock += dt.get('cantidad', 0)
                 
-                # LÓGICA DE AJUSTE: Si el registro fue hecho por YAKO o marcado como AJUSTE
-                if dt.get('tipo') == "AJUSTE" or dt.get('registrado_por') == "YAKO":
-                    if l and "SALIDA" not in l and l != "NONE" and l != "AJUSTE":
-                        ubicacion_prioritaria = l
+                # Identificar Ubicación más Reciente (Ignorando etiquetas de SALIDA)
+                fecha_reg = dt.get('fecha', '')
+                ubi_reg = str(dt.get('ubicacion', '')).upper()
                 
-                # Guardamos ubicaciones normales (si no hay ajuste aún)
-                if l and "SALIDA" not in l and l != "NONE" and l != "": u_list.add(l)
+                if fecha_reg >= ultima_fecha and ubi_reg != "SALIDA" and ubi_reg != "" and ubi_reg != "NONE":
+                    ultima_fecha = fecha_reg
+                    ultima_ubicacion = ubi_reg
                 
-                if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR"]: f_url = dt.get('foto_url')
+                # Guardar última foto válida
+                if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR"]: 
+                    f_url = dt.get('foto_url')
         
         if col_found:
             st.subheader(f"RESULTADO: {c}")
             c1, c2 = st.columns(2)
             c1.metric("STOCK / 재고", stock)
+            # AQUÍ SOLO APARECE LA NUEVA UBICACIÓN (La más reciente)
+            c2.metric("UBICACIÓN / 위치", ultima_ubicacion)
             
-            # --- MOSTRAR SOLO LA UBICACIÓN DE YAKO SI EXISTE ---
-            ubi_mostrar = ubicacion_prioritaria if ubicacion_prioritaria else (", ".join(u_list) if u_list else "---")
-            c2.metric("UBICACIÓN / 위치", ubi_mostrar)
-
             if f_url:
                 try: st.image(f_url, caption=f"ID: {c}")
                 except: st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
@@ -227,14 +231,17 @@ def buscar():
                 st.session_state.search_input = ""
                 st.rerun()
 
+            # --- SECCIÓN EXCLUSIVA YAKO ---
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
                 aq = st.number_input("Ajuste Cantidad (+/-) / 수량 조정", step=1, key="aq_val")
-                au = st.text_input("Nueva Ubicación Real / 실제 위치", key="au_val").upper()
+                au = st.text_input("Ubicación Real / 실제 위치", key="au_val").upper()
                 if st.button("CONFIRMAR AJUSTE / 조정 확인"):
+                    # Al agregar este registro con fecha actual, se convierte automáticamente en la "Nueva Ubicación"
                     db.collection(col_found).add({
                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "item": c, "cantidad": aq, "ubicacion": au if au else "AJUSTE",
+                        "item": c, "cantidad": aq, 
+                        "ubicacion": au if au else "AJUSTE",
                         "registrado_por": "YAKO", "foto_url": "NO FOTO", "tipo": "AJUSTE"
                     })
                     st.success("Ajustado / 조정됨"); st.rerun()
