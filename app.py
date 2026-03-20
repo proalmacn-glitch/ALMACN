@@ -54,6 +54,14 @@ def ir(acc, cat):
     st.session_state.scanned_id = ""
     st.rerun()
 
+def animacion_aleatoria():
+    opcion = random.randint(1, 5)
+    if opcion == 1: st.balloons()
+    elif opcion == 2: st.snow()
+    elif opcion == 3: st.toast("🚀 ¡REGISTRO EXITOSO! / 등록 성공!", icon="🔥")
+    elif opcion == 4: st.toast("📦 MATERIAL ACTUALIZADO / 자재 업데이트됨", icon="✅")
+    elif opcion == 5: st.toast("🎯 PROCESO COMPLETADO / 작업 완료", icon="🎯")
+
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
@@ -61,18 +69,15 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { 
-        color: yellow !important; font-size: 16px !important; 
-    }
-    .stTextInput>div>div>input { 
-        text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; 
-    }
+    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; }
+    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
-    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; margin: auto; }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; }
     .qr-card { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; margin: 20px auto; text-align: center; }
     div[data-testid="stImage"] { display: flex; justify-content: center; }
+    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -114,14 +119,15 @@ def menu():
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.session_state.user == "YAKO" and st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def formulario():
@@ -156,60 +162,81 @@ def formulario():
             "cantidad": cant1 if acc == "ENTRADA" else -cant1,
             "ubicacion": ubi, "solicitante": solicitante, "registrado_por": st.session_state.user
         })
-        st.success("✅ ¡ACCIÓN EFECTUADA CON ÉXITO! / 작업이 완료되었습니다!")
-        st.balloons(); st.session_state.scanned_id = ""
+        animacion_aleatoria(); st.success("✅ ¡EXITO!"); st.session_state.scanned_id = ""
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
     query = st.text_input("ID o NOMBRE / ID 또는 이름").upper().strip()
     if query:
-        resultados = []
+        res = []
         for col in ["materiales", "holders"]:
             docs = db.collection(col).stream()
             for d in docs:
                 data = d.to_dict()
                 if query in str(data.get('nombre', '')).upper() or query == str(data.get('item', '')).upper():
-                    data['categoria_db'] = col
-                    resultados.append(data)
-        if resultados:
-            # Selecciona automáticamente el primer resultado encontrado
-            item = resultados[0]
-            id_f, col_f = item.get('item'), item['categoria_db']
-            
-            # Título dinámico (Búsqueda actual)
+                    data['cat_db'] = col; res.append(data)
+        if res:
+            item = res[0]
+            id_f, col_f = item.get('item'), item['cat_db']
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
-            
-            # Ubicación fija (ignorando 'SALIDA')
-            ubi_real = "---"
-            docs_ubi = db.collection(col_f).where("item", "==", id_f).limit(30).stream()
-            for d in docs_ubi:
-                u_temp = d.to_dict().get('ubicacion', '---')
-                if u_temp != "SALIDA": ubi_real = u_temp; break
-            
-            # Cálculo de inventario neto (Mínimo 0)
-            docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
-            total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
-            
+            u_real = "---"
+            d_u = db.collection(col_f).where("item", "==", id_f).limit(30).stream()
+            for d in d_u:
+                tmp = d.to_dict().get('ubicacion', '---')
+                if tmp != "SALIDA": u_real = tmp; break
+            d_s = db.collection(col_f).where("item", "==", id_f).stream()
+            tot = sum([d.to_dict().get('cantidad', 0) for d in d_s])
             c1, c2 = st.columns(2)
-            c1.metric("SUMA ACTUAL / 현재 총계", max(0, total_neto))
-            c2.metric("UBICACIÓN / 위치", ubi_real)
-            
+            c1.metric("SUMA ACTUAL", max(0, tot))
+            c2.metric("UBICACIÓN", u_real)
             st.divider()
-            
-            # QR y Foto centrados
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
             st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
-            
-            foto = convertir_link_drive(item.get('foto_url', ''))
-            if foto: st.image(foto, width=450, caption=f"REF: {item.get('nombre')}")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
+            f = convertir_link_drive(item.get('foto_url', ''))
+            if f: st.image(f, width=450); st.markdown('</div>', unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
+
+def admin():
+    st.title("PANEL CONTROL / 제어판")
+    t1, t2, t3, t4 = st.tabs(["BORRAR", "EXCEL DETALLADO", "CARGA MASIVA", "USUARIOS"])
+    with t1:
+        cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"])
+        del_id = st.text_input("ID A BORRAR").upper()
+        if st.checkbox("Confirmar"):
+            if st.button("🔴 EJECUTAR BORRADO"):
+                ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
+                for d in ds: db.collection(cdb).document(d.id).delete()
+                st.success("Borrado"); st.rerun()
+    with t2:
+        ce = st.selectbox("REPORTE", ["materiales", "holders"])
+        if st.button("📥 GENERAR EXCEL"):
+            data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
+            if data:
+                df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','nombre':'NOMBRE','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOLICITANTE','registrado_por':'USUARIO'})
+                csv = df[['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','USUARIO']].to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar", csv, f"Reporte_{ce}.csv", "text/csv")
+    with t3:
+        dest = st.selectbox("DESTINO", ["materiales", "holders"])
+        arch = st.file_uploader("Subir .xlsx", type=['xlsx'])
+        if arch and st.button("🚀 INICIAR"):
+            df_in = pd.read_excel(arch)
+            for _, f in df_in.iterrows():
+                db.collection(dest).add({"nombre":str(f['NOMBRE']).upper(),"item":str(f['ID']).upper(),"cantidad":int(f['CANTIDAD']),"ubicacion":str(f['UBICACIÓN']).upper(),"foto_url":str(f.get('FOTO','NO FOTO')),"fecha":datetime.now().strftime("%Y-%m-%d %H:%M"),"registrado_por":"ADMIN"})
+            st.success("Carga lista")
+    with t4:
+        uds = db.collection("USUARIOS").stream()
+        for u in uds:
+            ud = u.to_dict()
+            with st.container():
+                st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")}</div>', unsafe_allow_html=True)
+                if st.button("BORRAR USUARIO", key=f"d_{u.id}"): db.collection("USUARIOS").document(u.id).delete(); st.rerun()
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
+elif st.session_state.page == 'admin': admin()
