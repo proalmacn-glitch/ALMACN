@@ -66,7 +66,7 @@ def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat
     st.session_state.page = 'form'; st.session_state.scanned_id = ""; st.rerun()
 
-# ================= PÁGINAS =================
+# ================= VISTAS =================
 
 def login():
     st.title("LOGIN / 로그인")
@@ -88,8 +88,18 @@ def login():
             u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
             st.success(f"User: {u}\nPass: {p}")
+    
     st.divider()
+    # --- BOTONES DE SALIDA RÁPIDA RESTAURADOS ---
+    c1, c2 = st.columns(2)
+    if c1.button("SALIDA MATERIALES / 자재 출고"):
+        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "materiales")
+    if c2.button("SALIDA HOLDERS / 홀더 출고"):
+        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
+    
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    
+    # Imagen de inicio
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -97,9 +107,11 @@ def menu():
     st.info(f"HOLA: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
+        st.subheader("MATERIALES")
         if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
         if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
+        st.subheader("HOLDERS")
         if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     st.divider()
@@ -126,7 +138,7 @@ def formulario():
             "registrado_por": st.session_state.user, "foto_url": "NO FOTO"
         })
         st.success("OK"); st.session_state.scanned_id = ""; st.rerun()
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
@@ -146,7 +158,7 @@ def buscar():
             c1.metric("STOCK", stock); c2.metric("UBICACIÓN", u_ubi)
             if f_url: st.image(f_url)
         else: st.warning("No encontrado")
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def admin():
     st.title("PANEL CONTROL / 제어판")
@@ -164,7 +176,7 @@ def admin():
             if st.button("🚀 INICIAR CARGA"):
                 for i, fila in df.iterrows():
                     # Lógica de foto random si está vacío
-                    foto = str(fila['FOTO']) if pd.notna(fila['FOTO']) else f"https://picsum.photos/seed/{random.randint(1,1000)}/400/300"
+                    foto = str(fila['FOTO']) if pd.notna(fila['FOTO']) and str(fila['FOTO']).strip() != "" else f"https://picsum.photos/seed/{random.randint(1,1000)}/400/300"
                     
                     db.collection("materiales").add({
                         "nombre": str(fila['NOMBRE']),
