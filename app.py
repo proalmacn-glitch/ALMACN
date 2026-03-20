@@ -86,7 +86,6 @@ def login():
     st.title("LOGIN / 로그인")
     u_in = st.text_input("USUARIO / 사용자").upper().strip()
     p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
-    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
@@ -100,14 +99,12 @@ def login():
             u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
             st.success(f"User: {u}\nPass: {p}")
-            
     st.divider()
     c_inv1, c_inv2 = st.columns(2)
     if c_inv1.button("SALIDA MAT INVITADO / 자재 출고 (게스트)"):
         st.session_state.user = "INVITADO"; ir("SALIDA", "materiales")
     if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고 (게스트)"):
         st.session_state.user = "INVITADO"; ir("SALIDA", "holders")
-    
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
@@ -128,48 +125,31 @@ def menu():
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def formulario():
-    cat, acc = st.session_state.categoria, st.session_state.accion
+    cat, acc = st.session_state.get('categoria', 'materiales'), st.session_state.get('accion', 'ENTRADA')
     st.header(f"{cat.upper()} - {acc}")
-    
     with st.expander("📷 USAR CÁMARA / 카메라 사용", expanded=False):
         cam = st.camera_input("QR SCAN")
         if cam:
             res = decodificar_qr(cam)
             if res: st.session_state.scanned_id = res
-            
     cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
-    
     stock_calc = 0
     if cod:
         docs = db.collection(cat).where("item", "==", cod).stream()
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
         st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{stock_calc}**")
-
     col_c1, col_c2 = st.columns(2)
     cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant2 = col_c2.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
-    
     solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip() if acc == "SALIDA" else ""
-    
     ubi_fija = ""
     if cod:
-        doc_ubi = db.collection(cat).where("item", "==", cod).where("ubicacion", "!=", "SALIDA").limit(1).stream()
-        for d in doc_ubi: ubi_fija = d.to_dict().get("ubicacion", "")
-
+        doc_ubi = db.collection(cat).where("item", "==", cod).limit(10).stream()
+        for d in doc_ubi:
+            u_temp = d.to_dict().get("ubicacion", "")
+            if u_temp != "SALIDA": ubi_fija = u_temp; break
     ubi = st.text_input("UBICACIÓN / 위치", value=ubi_fija).upper() if acc == "ENTRADA" else "SALIDA"
-    
-    bloqueado = False
-    if cant1 != cant2:
-        st.error("CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
-        bloqueado = True
-    if acc == "SALIDA":
-        if cant1 > stock_calc:
-            st.error(f"STOCK INSUFICIENTE / 재고 부족 (MAX: {stock_calc})")
-            bloqueado = True
-        if not solicitante:
-            st.warning("INGRESE NOMBRE DE SOLICITANTE / 신청자 이름을 입력하세요")
-            bloqueado = True
-
+    bloqueado = cant1 != cant2 or (acc == "SALIDA" and (cant1 > stock_calc or not solicitante))
     if st.button("REGISTRAR ACCIÓN / 작업 등록", disabled=bloqueado):
         db.collection(cat).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
@@ -177,9 +157,7 @@ def formulario():
             "ubicacion": ubi, "solicitante": solicitante, "registrado_por": st.session_state.user
         })
         st.success("✅ ¡ACCIÓN EFECTUADA CON ÉXITO! / 작업이 완료되었습니다!")
-        st.balloons()
-        st.session_state.scanned_id = ""
-        
+        st.balloons(); st.session_state.scanned_id = ""
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
@@ -194,51 +172,33 @@ def buscar():
                 if query in str(data.get('nombre', '')).upper() or query == str(data.get('item', '')).upper():
                     data['categoria_db'] = col
                     resultados.append(data)
-        
         if resultados:
-            # --- LÓGICA DEL "PERRO" REFORZADA ---
             if len(resultados) > 1:
                 st.warning("⚠️ HAY MÁS DE 1 COINCIDENCIA / 1개 이상의 결과가 있습니다")
                 opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
                 seleccion = st.selectbox("ELEGIR MATERIAL / 자재 선택:", list(opciones.keys()))
                 item = opciones[seleccion]
-            else:
-                item = resultados[0]
-            
+            else: item = resultados[0]
             id_f, col_f = item.get('item'), item['categoria_db']
-            
-            # Título dinámico basado en lo buscado (Texto verde señalado)
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
-            
-            # Buscar ubicación fija (no 'SALIDA')
             ubi_real = "---"
-            docs_ubi = db.collection(col_f).where("item", "==", id_f).where("ubicacion", "!=", "SALIDA").limit(1).stream()
-            for d in docs_ubi: ubi_real = d.to_dict().get('ubicacion', '---')
-
-            # Cálculo de inventario neto total
+            # Consulta simplificada para evitar el error de índice
+            docs_ubi = db.collection(col_f).where("item", "==", id_f).limit(20).stream()
+            for d in docs_ubi:
+                u_temp = d.to_dict().get('ubicacion', '---')
+                if u_temp != "SALIDA": ubi_real = u_temp; break
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
-            
             c1, c2 = st.columns(2)
             c1.metric("SUMA ACTUAL / 현재 총계", total_neto)
             c2.metric("UBICACIÓN / 위치", ubi_real)
-            
             st.divider()
-            
-            # --- QR Y FOTO CENTRADOS ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'''
-                <div class="qr-card">
-                    <img src="{qr_url}"><br>
-                    <b style="color:black;">QR {id_f}</b>
-                </div>
-            ''', unsafe_allow_html=True)
-            
+            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
             foto = convertir_link_drive(item.get('foto_url', ''))
             if foto: st.image(foto, width=450, caption=f"REF: {item.get('nombre')}")
             st.markdown('</div>', unsafe_allow_html=True)
-            
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
 # --- NAVEGACIÓN ---
@@ -246,3 +206,4 @@ if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
+    
