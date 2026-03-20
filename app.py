@@ -28,9 +28,8 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- FUNCIÓN PARA CONVERTIR LINKS DE DRIVE / 드라이브 링크 변환 ---
+# --- UTILIDADES / 유틸리티 ---
 def convertir_link_drive(url):
-    """Convierte links de compartir de Google Drive en links de visualización directa."""
     if 'drive.google.com' in url:
         match = re.search(r'd/([^/]+)', url)
         if match:
@@ -38,64 +37,122 @@ def convertir_link_drive(url):
             return f'https://drive.google.com/uc?export=view&id={file_id}'
     return url
 
-# --- ESTILOS VISUALES / 시각적 스타일 (CENTRADOS) ---
+def decodificar_qr(foto):
+    try:
+        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        codigos = decode(img)
+        if codigos: return codigos[0].data.decode("utf-8").upper()
+    except: return None
+    return None
+
+def ir(acc, cat):
+    st.session_state.accion = acc
+    st.session_state.categoria = cat
+    st.session_state.page = 'form'
+    st.session_state.scanned_id = ""
+    st.rerun()
+
+# --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
-    
-    /* Etiquetas amarillas */
-    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label { 
-        color: yellow !important; font-size: 16px !important; 
-    }
-
-    /* Métricas: Cian Mate sin brillo excesivo */
-    div[data-testid="stMetricValue"] { 
-        font-size: 45px !important; color: #00cccc !important; text-align: center !important; 
-    }
-    div[data-testid="stMetricLabel"] { 
-        font-size: 18px !important; color: white !important; text-align: center !important; 
-    }
-    div[data-testid="stMetric"] { 
-        background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; 
-    }
-    
-    /* CENTRADO DE QR E IMÁGENES */
-    .center-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        width: 100%;
-    }
-    
-    .qr-card {
-        background-color: white;
-        padding: 15px;
-        border-radius: 10px;
-        display: inline-block;
-        margin-bottom: 20px;
-    }
-
-    /* Forzar centrado de componentes nativos de Streamlit */
-    div[data-testid="stImage"] {
-        display: flex;
-        justify-content: center;
-    }
+    .stButton>button:hover { background-color: red; color: white; }
+    div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
+    div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
+    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; }
+    .qr-card { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; margin-bottom: 20px; }
+    div[data-testid="stImage"] { display: flex; justify-content: center; }
+    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- VARIABLES DE SESIÓN ---
-if 'page' not in st.session_state: st.session_state.user = None; st.session_state.page = 'login'
+if 'page' not in st.session_state: st.session_state.page = 'login'
+if 'user' not in st.session_state: st.session_state.user = None
+if 'user_status' not in st.session_state: st.session_state.user_status = None
+if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
-# ================= VISTA: BUSCAR / 검색 (HÍBRIDA + LISTA) =================
+# ================= VISTAS =================
+
+def login():
+    st.title("LOGIN / 로그인")
+    u_in = st.text_input("Usuario / 사용자").upper().strip()
+    p_in = st.text_input("Clave / 비밀번호", type="password").strip()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("ENTRAR / 입장"):
+            doc = db.collection("USUARIOS").document(u_in).get()
+            data = doc.to_dict() if doc.exists else None
+            if data and str(data.get('clave')) == p_in:
+                if data.get('estado') in ['ACTIVO', 'ADMIN_MASTER'] or u_in == "YAKO":
+                    st.session_state.user = u_in
+                    st.session_state.user_status = "YAKO" if data.get('estado') == 'ADMIN_MASTER' or u_in == "YAKO" else "ACTIVO"
+                    st.session_state.page = 'menu'; st.rerun()
+                else: st.warning("Cuenta pendiente de activación")
+            else: st.error("Datos incorrectos")
+            
+    with col2:
+        if st.button("REGISTRARSE / 등록"):
+            u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
+            st.success(f"Toma foto:\nUser: {u}\nPass: {p}")
+    
+    st.divider()
+    c1, c2 = st.columns(2)
+    if c1.button("SALIDA MATERIALES / 자재 출고"):
+        st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
+    if c2.button("SALIDA HOLDERS / 홀더 출고"):
+        st.session_state.user="INVITADO"; ir("SALIDA", "holders")
+    
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+
+def menu():
+    st.title("ALMACÉN / 창고")
+    st.info(f"SESIÓN: {st.session_state.user}")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("MATERIALES / 자재")
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
+    with c2:
+        st.subheader("HOLDERS / 홀더")
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
+    st.divider()
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.session_state.user_status == "YAKO" and st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
+    if st.button("SALIR / 로그아웃"): 
+        st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+
+def formulario():
+    cat = st.session_state.get('categoria', 'materiales')
+    acc = st.session_state.get('accion', 'ENTRADA')
+    st.header(f"{cat.upper()} - {acc}")
+    with st.expander("📷 ESCANEAR QR", expanded=True):
+        cam = st.camera_input("QR")
+        if cam:
+            res = decodificar_qr(cam)
+            if res: st.session_state.scanned_id = res
+    cod = st.text_input("ID / CÓDIGO", value=st.session_state.scanned_id).upper().strip()
+    cant = st.number_input("CANTIDAD", min_value=1)
+    ubi = st.text_input("UBICACIÓN").upper() if acc == "ENTRADA" else "SALIDA"
+    if st.button("REGISTRAR"):
+        db.collection(cat).add({
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
+            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi,
+            "registrado_por": st.session_state.user, "foto_url": "NO FOTO"
+        })
+        st.success("REGISTRADO"); st.session_state.scanned_id = ""; st.rerun()
+    if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
     query = st.text_input("NOMBRE o ID / 이름 또는 ID").upper().strip()
-
     if query:
         resultados = []
         for col in ["materiales", "holders"]:
@@ -108,81 +165,89 @@ def buscar():
         
         item_elegido = None
         if len(resultados) > 1:
-            st.warning(f"RESULTADOS ENCONTRADOS / 검색 결과: {len(resultados)}")
             opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
-            seleccion = st.selectbox("SELECCIONA / 선택하세요:", list(opciones.keys()))
+            seleccion = st.selectbox("SELECCIONA:", list(opciones.keys()))
             item_elegido = opciones[seleccion]
         elif len(resultados) == 1:
             item_elegido = resultados[0]
-        else:
-            st.error("SIN RESULTADOS / 결과 없음")
-
+            
         if item_elegido:
             id_f = item_elegido.get('item', '---')
-            nombre_f = item_elegido.get('nombre', '---')
             col_f = item_elegido['categoria_db']
-            
-            # Stock acumulado
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_stock = sum([doc.to_dict().get('cantidad', 0) for doc in docs_stock])
-            ubi_f = item_elegido.get('ubicacion', '---')
-
-            st.markdown(f"<h2>{nombre_f}</h2>", unsafe_allow_html=True)
-            st.markdown(f"<p style='text-align: center;'>ID: {id_f}</p>", unsafe_allow_html=True)
             
+            st.markdown(f"<h2>{item_elegido.get('nombre', '---')}</h2>", unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            c1.metric("STOCK TOTAL / 총 재고", total_stock)
-            c2.metric("UBICACIÓN / 위치", ubi_f)
-
+            c1.metric("STOCK TOTAL", total_stock)
+            c2.metric("UBICACIÓN", item_elegido.get('ubicacion', '---'))
+            
             st.divider()
-
-            # --- SECCIÓN CENTRADA ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
-            
-            # Código QR
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'''
-                <div class="qr-card">
-                    <img src="{qr_url}"><br>
-                    <b style="color: black;">CÓDIGO QR / QR 코드</b>
-                </div>
-            ''', unsafe_allow_html=True)
-            
-            # Imagen de Referencia (Google Drive compatible)
-            foto_url = item_elegido.get('foto_url', '')
-            if foto_url and foto_url not in ["NO FOTO", "ERROR"]:
-                link_directo = convertir_link_drive(foto_url)
-                st.image(link_directo, width=450, caption=f"REFERENCIA / 참조: {nombre_f}")
-            
+            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black">QR {id_f}</b></div>', unsafe_allow_html=True)
+            foto = item_elegido.get('foto_url', '')
+            if foto and foto not in ["NO FOTO", "ERROR"]:
+                st.image(convertir_link_drive(foto), width=450)
             st.markdown('</div>', unsafe_allow_html=True)
+            
+    if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
-    if st.button("VOLVER / 돌아가기"):
-        st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
-
-# ================= LOGIN Y MENÚ =================
-
-def login():
-    st.title("LOGIN / 로그인")
-    u = st.text_input("Usuario / 사용자").upper().strip()
-    p = st.text_input("Clave / 비밀번호", type="password")
-    if st.button("ENTRAR / 입장"):
-        doc = db.collection("USUARIOS").document(u).get()
-        if doc.exists and str(doc.to_dict().get('clave')) == p:
-            st.session_state.user = u
-            st.session_state.page = 'menu'; st.rerun()
-        else: st.error("DATOS INCORRECTOS / 잘못된 정보")
+def admin():
+    if st.session_state.user_status != "YAKO": st.error("ACCESO PROHIBIDO"); return
+    st.title("PANEL CONTROL / 제어판")
+    t1, t2, t3, t4 = st.tabs(["BORRAR", "EXCEL", "CARGA EXCEL", "USUARIOS"])
     
-    st.divider()
-    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    with t1:
+        col_db = st.selectbox("CATEGORÍA", ["materiales", "holders"])
+        c_del = st.text_input("ID ESPECÍFICO").upper()
+        if st.checkbox("SÍ, ESTOY SEGURO"):
+            if st.button("🔴 CONFIRMAR ELIMINACIÓN"):
+                docs = db.collection(col_db).where("item", "==", c_del).stream() if c_del else db.collection(col_db).stream()
+                for d in docs: db.collection(col_db).document(d.id).delete()
+                st.success("ELIMINADO"); st.rerun()
+                
+    with t2:
+        ce_s = st.selectbox("COLECCIÓN", ["materiales", "holders"], key="desc")
+        if st.button("📥 GENERAR EXCEL"):
+            data = [d.to_dict() for d in db.collection(ce_s).stream()]
+            if data:
+                df = pd.DataFrame(data).groupby('item').agg({'cantidad': 'sum', 'ubicacion': 'last', 'nombre': 'first'}).reset_index()
+                st.download_button("Descargar CSV", df.to_csv(index=False).encode('utf-8-sig'), f"STOCK_{ce_s}.csv", "text/csv")
 
-def menu():
-    st.title("ALMACÉN / 창고")
-    st.info(f"SESIÓN: {st.session_state.user}")
-    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    if st.button("SALIR / 로그아웃"): 
-        st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+    with t3:
+        dest = st.selectbox("DESTINO", ["MATERIALES", "HOLDERS"])
+        archivo = st.file_uploader("Subir .xlsx", type=['xlsx'])
+        if archivo and st.button("🚀 CARGAR"):
+            df = pd.read_excel(archivo)
+            col_dest = dest.lower()
+            for _, f in df.iterrows():
+                db.collection(col_dest).add({
+                    "nombre": str(f['NOMBRE']).upper(), "item": str(f['ID']).upper(),
+                    "cantidad": int(f['CANTIDAD']), "ubicacion": str(f['UBICACION']).upper(),
+                    "foto_url": str(f['FOTO']), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "registrado_por": "YAKO_EXCEL"
+                })
+            st.success("COMPLETADO")
+
+    with t4:
+        u_docs = db.collection("USUARIOS").stream()
+        for u in u_docs:
+            ud = u.to_dict()
+            if ud.get('estado') != "ADMIN_MASTER":
+                with st.container():
+                    st.markdown(f'<div class="user-card">', unsafe_allow_html=True)
+                    st.write(f"**ID:** {u.id} | **Estado:** {ud.get('estado')}")
+                    st.text_input(f"Clave {u.id}", value=ud.get('clave'), type="password", disabled=True)
+                    c1, c2 = st.columns(2)
+                    if c1.button("ACTIVAR", key=f"act_{u.id}"): db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
+                    if c2.button("BORRAR", key=f"del_{u.id}"): db.collection("USUARIOS").document(u.id).delete(); st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
+elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
+elif st.session_state.page == 'admin': admin()
