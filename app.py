@@ -43,7 +43,7 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .warning-box { border: 2px solid orange; padding: 15px; border-radius: 10px; background-color: #2b1d00; color: white; text-align: center; margin-bottom: 20px; }
-    .user-card { border: 1px solid #444; padding: 10px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
+    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -73,11 +73,6 @@ def ir(acc, cat):
 def login():
     st.title("LOGIN / 로그인")
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
-    
-    # Buscamos si existe un admin personalizado o usamos el default
-    admin_ref = db.collection("USUARIOS").where("estado", "==", "ADMIN_MASTER").limit(1).get()
-    admin_id = admin_ref[0].id if admin_ref else "YAKO"
-
     u_in = st.text_input("Usuario / 사용자").upper().strip()
     p_in = st.text_input("Clave / 비밀번호", type="password").strip()
     
@@ -171,7 +166,9 @@ def buscar():
     if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def admin():
-    if st.session_state.user_status != "YAKO": st.error("ACCESO RESTRINGIDO"); return
+    if st.session_state.user_status != "YAKO": 
+        st.error("ACCESO PROHIBIDO"); st.session_state.page = 'login'; st.rerun()
+        
     st.title("PANEL CONTROL / 제어판")
     t1, t2, t3, t4 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "CARGA EXCEL", "USUARIOS/사용자"])
     
@@ -179,10 +176,9 @@ def admin():
         st.subheader("Eliminar Material o Categoría")
         col_db = st.selectbox("Categoría a limpiar", ["materiales", "holders"])
         c_del = st.text_input("ID Específico (Vació para borrar TODO EL STOCK)").upper()
-        
         st.markdown('<div class="warning-box">', unsafe_allow_html=True)
         st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER")
-        seguro = st.checkbox(f"SÍ, ESTOY SEGURO QUE QUIERO ELIMINAR")
+        seguro = st.checkbox(f"SÍ, ESTOY SEGURO")
         if seguro:
             if st.button("🔴 CONFIRMAR ELIMINACIÓN DEFINITIVA"):
                 if c_del:
@@ -224,10 +220,11 @@ def admin():
                 st.success("Carga completada.")
 
     with t4:
-        st.subheader("Gestión de Usuarios")
+        st.subheader("Gestión de Usuarios (Solo Empleados)")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
+            # SE EXCLUYE AL ADMINISTRADOR MAESTRO DE LA LISTA
             if ud.get('estado') != "ADMIN_MASTER":
                 with st.container():
                     st.markdown(f'<div class="user-card">', unsafe_allow_html=True)
@@ -244,27 +241,21 @@ def admin():
                     st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("⚙️ Configuración Admin (YAKO)")
-        
-        # Obtener datos actuales de YAKO para el cambio
+        st.subheader("⚙️ Perfil Maestro (YAKO)")
         admin_actual = db.collection("USUARIOS").where("estado", "==", "ADMIN_MASTER").get()
         current_id = admin_actual[0].id if admin_actual else "YAKO"
         current_pw = admin_actual[0].to_dict().get('clave') if admin_actual else "1234"
 
-        new_admin_id = st.text_input("Nuevo Nombre de Admin", value=current_id).upper().strip()
-        new_admin_pw = st.text_input("Nueva Clave Admin", value=current_pw, type="password")
+        new_admin_id = st.text_input("Editar Nombre Admin Maestro", value=current_id).upper().strip()
+        new_admin_pw = st.text_input("Editar Clave Admin Maestro", value=current_pw, type="password")
         
-        if st.button("💾 ACTUALIZAR PERFIL MASTER"):
-            # Si el nombre cambió, borramos el viejo y creamos el nuevo para no duplicar
+        if st.button("💾 GUARDAR CAMBIOS PERFIL"):
             if new_admin_id != current_id:
                 db.collection("USUARIOS").document(current_id).delete()
-            
             db.collection("USUARIOS").document(new_admin_id).set({
-                "clave": new_admin_pw,
-                "estado": "ADMIN_MASTER",
-                "nombre_personal": new_admin_id
+                "clave": new_admin_pw, "estado": "ADMIN_MASTER", "nombre_personal": new_admin_id
             })
-            st.success("Perfil Maestro actualizado. Por favor re-inicia sesión.")
+            st.success("Perfil Maestro actualizado. Reiniciando...")
             st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
 
     if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
