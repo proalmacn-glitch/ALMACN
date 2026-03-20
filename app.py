@@ -37,11 +37,12 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label { color: yellow !important; font-size: 16px !important; }
+    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stFileUploader"] label { color: yellow !important; font-size: 16px !important; }
     .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: cyan !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    .warning-box { border: 2px solid orange; padding: 15px; border-radius: 10px; background-color: #2b1d00; color: white; text-align: center; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -73,6 +74,7 @@ def login():
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     u_in = st.text_input("Usuario / 사용자").upper().strip()
     p_in = st.text_input("Clave / 비밀번호", type="password").strip()
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
@@ -85,6 +87,7 @@ def login():
                     st.session_state.page = 'menu'; st.rerun()
                 else: st.warning("Cuenta pendiente de activación / 승인 대기 중")
             else: st.error("Acceso Denegado")
+            
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
@@ -169,16 +172,24 @@ def admin():
     with t1:
         st.subheader("Eliminar Material o Categoría")
         col_db = st.selectbox("Categoría a limpiar", ["materiales", "holders"])
-        c_del = st.text_input("ID Específico (Vacío para borrar TODO EL STOCK)").upper()
-        if st.button("⚠️ CONFIRMAR ELIMINACIÓN"):
-            if c_del:
-                docs = db.collection(col_db).where("item", "==", c_del).stream()
-                for d in docs: db.collection(col_db).document(d.id).delete()
-                st.success(f"ID {c_del} eliminado.")
-            else:
-                docs = db.collection(col_db).stream()
-                for d in docs: db.collection(col_db).document(d.id).delete()
-                st.success(f"Todo el stock de {col_db} ha sido borrado.")
+        c_del = st.text_input("ID Específico (Vació para borrar TODO EL STOCK)").upper()
+        
+        st.markdown('<div class="warning-box">', unsafe_allow_html=True)
+        st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER")
+        # VENTANA DE CONFIRMACIÓN
+        seguro = st.checkbox(f"SÍ, ESTOY SEGURO QUE QUIERO ELIMINAR {'EL ITEM ' + c_del if c_del else 'TODO EL STOCK DE ' + col_db.upper()}")
+        if seguro:
+            if st.button("🔴 CONFIRMAR ELIMINACIÓN DEFINITIVA"):
+                if c_del:
+                    docs = db.collection(col_db).where("item", "==", c_del).stream()
+                    for d in docs: db.collection(col_db).document(d.id).delete()
+                    st.success(f"ID {c_del} eliminado.")
+                else:
+                    docs = db.collection(col_db).stream()
+                    for d in docs: db.collection(col_db).document(d.id).delete()
+                    st.success(f"Stock de {col_db} vaciado.")
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
         st.subheader("Descargar Stock Actual")
@@ -187,29 +198,29 @@ def admin():
             data = [d.to_dict() for d in db.collection(ce_s).stream()]
             if data:
                 df_out = pd.DataFrame(data)
-                # Consolidar Stock por ID para el reporte final
                 df_resumen = df_out.groupby('item').agg({'cantidad': 'sum', 'ubicacion': 'last'}).reset_index()
                 csv = df_resumen.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar CSV", csv, f"stock_{ce_s}_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
-            else: st.info("No hay datos en esta categoría.")
+                st.download_button("Descargar CSV", csv, f"stock_{ce_s}.csv", "text/csv")
+            else: st.info("Sin datos.")
 
     with t3:
         st.subheader("Carga Automática desde Excel")
-        archivo = st.file_uploader("Subir .xlsx (Columnas: NOMBRE, ID, CANTIDAD, UBICACION, FOTO)", type=['xlsx'])
+        st.info("Columnas: NOMBRE, ID, CANTIDAD, UBICACION, FOTO")
+        archivo = st.file_uploader("Subir .xlsx", type=['xlsx'])
         if archivo:
             df = pd.read_excel(archivo)
             if st.button("🚀 INICIAR CARGA MASIVA"):
                 for _, f in df.iterrows():
-                    foto = str(f['FOTO']) if pd.notna(f['FOTO']) else f"https://picsum.photos/seed/{random.randint(1,999)}/400/300"
+                    foto = str(f['FOTO']) if pd.notna(f['FOTO']) and str(f['FOTO']).strip() != "" else f"https://picsum.photos/seed/{random.randint(1,999)}/400/300"
                     db.collection("materiales").add({
                         "nombre": str(f['NOMBRE']), "item": str(f['ID']).upper(),
                         "cantidad": int(f['CANTIDAD']), "ubicacion": str(f['UBICACION']).upper(),
                         "foto_url": foto, "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "registrado_por": "YAKO"
                     })
-                st.success("Carga completada.")
+                st.success("Carga completada con éxito.")
 
     with t4:
-        st.subheader("Gestión de Cuentas")
+        st.subheader("Gestión de Usuarios")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
@@ -222,15 +233,15 @@ def admin():
                     db.collection("USUARIOS").document(u.id).delete(); st.rerun()
         
         st.divider()
-        st.subheader("Cambiar Mi Contraseña (YAKO)")
+        st.subheader("Cambiar Clave (YAKO)")
         new_p = st.text_input("Nueva Clave Admin", type="password")
         if st.button("ACTUALIZAR CLAVE"):
             db.collection("USUARIOS").document("YAKO").update({"clave": new_p})
-            st.success("Clave de YAKO actualizada.")
+            st.success("Clave de administrador actualizada.")
 
     if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
-# --- RUTAS ---
+# --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
