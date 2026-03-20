@@ -90,7 +90,6 @@ def login():
             st.success(f"User: {u}\nPass: {p}")
     
     st.divider()
-    # --- BOTONES DE SALIDA RÁPIDA RESTAURADOS ---
     c1, c2 = st.columns(2)
     if c1.button("SALIDA MATERIALES / 자재 출고"):
         st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "materiales")
@@ -98,8 +97,6 @@ def login():
         st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    
-    # Imagen de inicio
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -156,7 +153,13 @@ def buscar():
             st.subheader(f"ID: {c}")
             c1, c2 = st.columns(2)
             c1.metric("STOCK", stock); c2.metric("UBICACIÓN", u_ubi)
-            if f_url: st.image(f_url)
+            
+            # --- SOLUCIÓN AL MENSAJE ROJO ---
+            if f_url:
+                try:
+                    st.image(f_url)
+                except:
+                    st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
         else: st.warning("No encontrado")
     if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
@@ -175,7 +178,6 @@ def admin():
 
             if st.button("🚀 INICIAR CARGA"):
                 for i, fila in df.iterrows():
-                    # Lógica de foto random si está vacío
                     foto = str(fila['FOTO']) if pd.notna(fila['FOTO']) and str(fila['FOTO']).strip() != "" else f"https://picsum.photos/seed/{random.randint(1,1000)}/400/300"
                     
                     db.collection("materiales").add({
