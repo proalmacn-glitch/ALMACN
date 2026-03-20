@@ -173,28 +173,21 @@ def buscar():
                     data['categoria_db'] = col
                     resultados.append(data)
         if resultados:
-            # --- LÓGICA DEL "PERRO" (SELECTBOX CONDICIONAL) ---
-            if len(resultados) > 1:
-                st.warning("⚠️ HAY MÁS DE 1 COINCIDENCIA / 1개 이상의 결과가 있습니다")
-                opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
-                seleccion = st.selectbox("ELEGIR MATERIAL / 자재 선택:", list(opciones.keys()))
-                item = opciones[seleccion]
-            else:
-                item = resultados[0]
-            
+            # Selecciona automáticamente el primer resultado encontrado
+            item = resultados[0]
             id_f, col_f = item.get('item'), item['categoria_db']
             
-            # Título Rojo Dinámico (Tu búsqueda)
+            # Título dinámico (Búsqueda actual)
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
             
-            # Ubicación fija (ignorando registros de salida)
+            # Ubicación fija (ignorando 'SALIDA')
             ubi_real = "---"
             docs_ubi = db.collection(col_f).where("item", "==", id_f).limit(30).stream()
             for d in docs_ubi:
                 u_temp = d.to_dict().get('ubicacion', '---')
                 if u_temp != "SALIDA": ubi_real = u_temp; break
             
-            # Cálculo de inventario neto con protección anti-negativos (Mínimo 0)
+            # Cálculo de inventario neto (Mínimo 0)
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
             
@@ -204,15 +197,10 @@ def buscar():
             
             st.divider()
             
-            # --- QR Y FOTO CENTRADOS ---
+            # QR y Foto centrados
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'''
-                <div class="qr-card">
-                    <img src="{qr_url}"><br>
-                    <b style="color:black;">QR {id_f}</b>
-                </div>
-            ''', unsafe_allow_html=True)
+            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
             
             foto = convertir_link_drive(item.get('foto_url', ''))
             if foto: st.image(foto, width=450, caption=f"REF: {item.get('nombre')}")
