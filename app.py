@@ -102,8 +102,6 @@ def login():
             st.success(f"User: {u}\nPass: {p}")
             
     st.divider()
-    
-    # --- BOTONES DE ACCESO RÁPIDO (RESTAURADOS) ---
     c_inv1, c_inv2 = st.columns(2)
     if c_inv1.button("SALIDA MAT INVITADO / 자재 출고 (게스트)"):
         st.session_state.user = "INVITADO"; ir("SALIDA", "materiales")
@@ -111,7 +109,6 @@ def login():
         st.session_state.user = "INVITADO"; ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -153,7 +150,13 @@ def formulario():
     cant2 = col_c2.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
     
     solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip() if acc == "SALIDA" else ""
-    ubi = st.text_input("UBICACIÓN / 위치").upper() if acc == "ENTRADA" else "SALIDA"
+    
+    ubi_fija = ""
+    if cod:
+        doc_ubi = db.collection(cat).where("item", "==", cod).where("ubicacion", "!=", "SALIDA").limit(1).stream()
+        for d in doc_ubi: ubi_fija = d.to_dict().get("ubicacion", "")
+
+    ubi = st.text_input("UBICACIÓN / 위치", value=ubi_fija).upper() if acc == "ENTRADA" else "SALIDA"
     
     bloqueado = False
     if cant1 != cant2:
@@ -193,27 +196,36 @@ def buscar():
                     resultados.append(data)
         
         if resultados:
-            # --- LÓGICA DEL "PERRO" ---
+            # --- LÓGICA DEL "PERRO" REFORZADA ---
             if len(resultados) > 1:
+                st.warning("⚠️ HAY MÁS DE 1 COINCIDENCIA / 1개 이상의 결과가 있습니다")
                 opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
-                seleccion = st.selectbox("VARIOS ENCONTRADOS / 여러 개 발견됨:", list(opciones.keys()))
+                seleccion = st.selectbox("ELEGIR MATERIAL / 자재 선택:", list(opciones.keys()))
                 item = opciones[seleccion]
             else:
                 item = resultados[0]
             
             id_f, col_f = item.get('item'), item['categoria_db']
             
+            # Título dinámico basado en lo buscado (Texto verde señalado)
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
             
+            # Buscar ubicación fija (no 'SALIDA')
+            ubi_real = "---"
+            docs_ubi = db.collection(col_f).where("item", "==", id_f).where("ubicacion", "!=", "SALIDA").limit(1).stream()
+            for d in docs_ubi: ubi_real = d.to_dict().get('ubicacion', '---')
+
+            # Cálculo de inventario neto total
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
             
             c1, c2 = st.columns(2)
             c1.metric("SUMA ACTUAL / 현재 총계", total_neto)
-            c2.metric("UBICACIÓN / 위치", item.get('ubicacion', '---'))
+            c2.metric("UBICACIÓN / 위치", ubi_real)
             
             st.divider()
             
+            # --- QR Y FOTO CENTRADOS ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
             st.markdown(f'''
