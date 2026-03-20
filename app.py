@@ -123,12 +123,12 @@ def menu():
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     
@@ -154,7 +154,7 @@ def formulario():
         if cam:
             res = decodificar_qr(cam)
             if res: st.session_state.scanned_id = res
-    cod = st.text_input("ID / CÓDIGO", value=st.session_state.scanned_id).upper().strip()
+    cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
     
     stock_calc = 0
     if cod:
@@ -162,9 +162,9 @@ def formulario():
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
         st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{max(0, stock_calc)}**")
 
-    c1, c2 = st.columns(2)
-    cant1 = c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
-    cant2 = c2.number_input("CONFIRMAR / 확인", min_value=0, key="cant2")
+    col_c1, col_c2 = st.columns(2)
+    cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
+    cant2 = col_c2.number_input("CONFIRMAR / 확인", min_value=0, key="cant2")
     sol = st.text_input("SOLICITANTE / 신청자").upper().strip() if acc == "SALIDA" else ""
     
     ubi_fija = ""
@@ -208,7 +208,7 @@ def buscar():
                 if d.to_dict().get('ubicacion') != "SALIDA": u_real = d.to_dict().get('ubicacion'); break
             d_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in d_s])
-            c1, c2 = st.columns(2); c1.metric("STOCK ACTUAL", max(0, tot)); c2.metric("UBICACIÓN", u_real)
+            c1, c2 = st.columns(2); c1.metric("STOCK ACTUAL / 재고", max(0, tot)); c2.metric("UBICACIÓN / 위치", u_real)
             st.divider()
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
@@ -219,11 +219,11 @@ def buscar():
 
 def admin():
     st.title("PANEL CONTROL / 제어판")
-    t1, t2, t3, t4 = st.tabs(["BORRAR STOCK", "EXCEL DETALLADO", "CARGA MASIVA", "USUARIOS"])
+    t1, t2, t3, t4 = st.tabs(["BORRAR STOCK / 삭제", "EXCEL REPORTE / 엑셀", "CARGA MASIVA / 로드", "USUARIOS / 사용자"])
     with t1:
         st.subheader("BORRADO / 삭제")
         cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-        del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제)").upper()
+        del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제) / 특정 ID").upper()
         if st.checkbox("Confirmar / 확인"):
             if st.button("🔴 EJECUTAR / 실행"):
                 ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
@@ -234,8 +234,9 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
-                df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','nombre':'NOMBRE','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOL','registrado_por':'USER'})
-                csv = df[['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOL','USER']].to_csv(index=False).encode('utf-8-sig')
+                df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOL','registrado_por':'USER'})
+                # SE ELIMINÓ LA COLUMNA NOMBRE SEGÚN SOLICITUD / 이름 열이 삭제되었습니다.
+                csv = df[['FECHA','ID','MOV','UBICACIÓN','SOL','USER']].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
