@@ -41,9 +41,8 @@ st.markdown("""
     .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: cyan !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
-    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    .step-box { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0a0a0a; }
     .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; text-align: center; }
-    .qr-box { background-color: white; padding: 10px; border-radius: 10px; text-align: center; margin-top: 10px; display: inline-block; color: black; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -77,7 +76,6 @@ def ir(acc, cat):
 
 def login():
     st.title("LOGIN / 로그인")
-    st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     u_in = st.text_input("Usuario / 사용자").upper().strip()
     p_in = st.text_input("Clave / 비밀번호", type="password").strip()
     
@@ -95,19 +93,13 @@ def login():
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
-            st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
+            st.success(f"TOMA FOTO:\nUser: {u}\nPass: {p}")
     
     st.divider()
-    st.markdown("<h4 style='text-align: center;'>SALIDA RÁPIDA / 빠른 출고</h4>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    if c1.button("SALIDA MATERIALES / 자재 출고"):
-        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "materiales")
-    if c2.button("SALIDA HOLDERS / 홀더 출고"):
-        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
-    
-    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"):
-        st.session_state.page = 'buscar'; st.rerun()
-
+    if c1.button("SALIDA MATERIALES"): ir("SALIDA", "materiales")
+    if c2.button("SALIDA HOLDERS"): ir("SALIDA", "holders")
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -115,24 +107,16 @@ def menu():
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
-        st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
-        st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     
     st.divider()
-    if st.button("🔍 BUSCAR / 검색"): 
-        st.session_state.page = 'buscar'; st.rerun()
-    
-    if st.session_state.user_status == "YAKO":
-        if st.button("PANEL CONTROL / 제어판"): 
-            st.session_state.page = 'admin'; st.rerun()
-            
-    if st.button("SALIR / 로그아웃"): 
-        st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.session_state.user_status == "YAKO" and st.button("PANEL CONTROL"): st.session_state.page = 'admin'; st.rerun()
+    if st.button("SALIR"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
 
 def formulario():
     cat = st.session_state.get('categoria', 'materiales')
@@ -146,23 +130,22 @@ def formulario():
             if codigo:
                 st.session_state.scanned_id = codigo
                 st.success(f"DETECTADO: {codigo}")
-            else: st.warning("No detectado / 감지되지 않음")
 
     cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
-    cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1)
-    conf_cant = st.number_input("CONFIRMAR / 수량 확인", min_value=0, step=1)
+    cant = st.number_input("CANTIDAD", min_value=1, step=1)
+    conf_cant = st.number_input("CONFIRMAR", min_value=0, step=1)
     
     if acc == "ENTRADA":
-        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
+        ubi = st.text_input("UBICACIÓN").upper().strip()
         quien = "ALMACEN"
     else:
-        ubi, quien = "SALIDA", st.text_input("QUIEN RETIRA / 수령자").upper().strip()
+        ubi, quien = "SALIDA", st.text_input("QUIEN RETIRA").upper().strip()
 
-    foto_ev = st.camera_input("FOTO EVIDENCIA / 증거 사진", key="foto_ev")
+    foto_ev = st.camera_input("FOTO EVIDENCIA", key="foto_ev")
     
-    if st.button("REGISTRAR / 등록"):
-        if not cod: st.error("Falta ID / ID 누락"); return
-        if cant != conf_cant: st.error("Cantidades no coinciden / 수량 불일치"); return
+    if st.button("REGISTRAR"):
+        if not cod: st.error("Falta ID"); return
+        if cant != conf_cant: st.error("Cantidades no coinciden"); return
         
         url_f = "NO FOTO"
         if foto_ev:
@@ -180,108 +163,105 @@ def formulario():
         })
         st.success(f"✅ REGISTRADO: {cod}")
         st.session_state.scanned_id = ""
-        if st.button("SIGUIENTE / 다음"): st.rerun()
+        if st.button("SIGUIENTE"): st.rerun()
 
-    if st.button("VOLVER / 돌아가기"): 
-        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
+    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
-    c = st.text_input("ID / CÓDIGO / 코드", key="bus_in").upper().strip()
+    c = st.text_input("ID / CÓDIGO", key="bus_in").upper().strip()
     if c:
         stock = 0; u_fecha = ""; u_ubi = "---"; f_url = None; col_found = None
         for col in ["materiales", "holders"]:
             docs = db.collection(col).where("item", "==", c).stream()
             for d in docs:
                 col_found = col; dt = d.to_dict(); stock += dt.get('cantidad', 0)
-                f_reg = dt.get('fecha', '')
-                u_reg = str(dt.get('ubicacion', '')).upper()
-                if f_reg >= u_fecha and u_reg != "SALIDA" and u_reg != "":
-                    u_fecha = f_reg; u_ubi = u_reg
-                # Cargar imagen si existe en el registro
-                if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR", ""]:
-                    f_url = dt.get('foto_url')
+                if dt.get('fecha', '') >= u_fecha and str(dt.get('ubicacion')).upper() != "SALIDA":
+                    u_fecha = dt.get('fecha'); u_ubi = dt.get('ubicacion')
+                if dt.get('foto_url') not in ["NO FOTO", "ERROR", None]: f_url = dt.get('foto_url')
         
         if col_found:
             st.subheader(f"ID: {c}")
             c1, c2 = st.columns(2)
-            c1.metric("STOCK / 재고", stock); c2.metric("UBICACIÓN / 위치", u_ubi)
-            
+            c1.metric("STOCK", stock); c2.metric("UBICACIÓN", u_ubi)
             if f_url:
-                try: 
-                    st.image(f_url, caption=f"REFERENCIA: {c}")
-                except: 
-                    st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
-            
-            qr_u = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
-            st.markdown(f'<div class="qr-box"><img src="{qr_u}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
-
-            if st.session_state.user_status == "YAKO":
-                st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
-                aq = st.number_input("Ajuste Cantidad / 수량 조정", step=1)
-                au = st.text_input("Nueva Ubicación / 실제 위치").upper()
-                if st.button("CONFIRMAR AJUSTE / 조정 확인"):
-                    db.collection(col_found).add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": c,
-                        "cantidad": aq, "ubicacion": au if au else "AJUSTE", "registrado_por": "YAKO"
-                    })
-                    st.success("OK"); st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-        else: st.warning("No encontrado / 찾을 수 없음")
-    
-    if st.button("VOLVER / 돌아가기"): 
-        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
+                try: st.image(f_url)
+                except: st.warning("Imagen no disponible")
+        else: st.warning("No encontrado")
+    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
 
 def admin():
     st.title("PANEL CONTROL / 제어판")
-    t1, t2, t3, t4, t5 = st.tabs(["BORRAR", "EXCEL", "CARGA", "PERFIL", "USUARIOS"])
+    t1, t2, t3, t4 = st.tabs(["BORRAR", "EXCEL", "CARGA ASISTIDA", "USUARIOS"])
     
     with t1:
-        st.subheader("Eliminar / 삭제")
         col_db = st.selectbox("Categoría", ["materiales", "holders"])
         c_del = st.text_input("ID a Borrar").upper()
-        if st.button("ELIMINAR TODO / 전체 삭제"):
+        if st.button("ELIMINAR"):
             docs = db.collection(col_db).where("item", "==", c_del).stream()
             for d in docs: db.collection(col_db).document(d.id).delete()
             st.success("OK")
 
     with t2:
-        ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"], key="admin_excel_col")
-        if st.button("DESCARGAR / 다운로드"):
+        ce_s = st.selectbox("Descargar", ["materiales", "holders"])
+        if st.button("DESCARGAR CSV"):
             data_e = [d.to_dict() for d in db.collection(ce_s).stream()]
             if data_e:
                 df = pd.DataFrame(data_e)
-                st.download_button("Descargar CSV", df.to_csv(index=False).encode('utf-8-sig'), f"{ce_s}.csv")
+                st.download_button("Descargar", df.to_csv(index=False).encode('utf-8-sig'), f"{ce_s}.csv")
 
     with t3:
-        st.subheader("Carga Masiva / 대량 업로드")
-        st.write("Formato: `ID CANT UBICACION URL_IMAGEN` (Separados por espacios)")
-        txt = st.text_area("Pega tu lista aquí")
-        if st.button("SUBIR LISTA / 목록 업로드"):
-            for l in txt.split('\n'):
-                p = l.split()
-                if len(p) >= 3:
-                    item_url = p[3] if len(p) >= 4 else "NO FOTO"
-                    db.collection("materiales").add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
-                        "item": p[0].upper(),
-                        "cantidad": int(p[1]), 
-                        "ubicacion": p[2].upper(), 
-                        "registrado_por": "YAKO",
-                        "foto_url": item_url
-                    })
-            st.success("Cargado correctamente / 성공적으로 업로드됨")
+        st.subheader("Paso a Paso / 단계별 업로드")
+        
+        # PASO 1: ID
+        st.markdown('<div class="step-box">', unsafe_allow_html=True)
+        id_masivo = st.text_input("1. ID / NOMBRE COMPLETO (Obligatorio)").upper().strip()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    with t5:
+        # PASO 2: CANTIDAD (Solo si hay ID)
+        cant_masivo = 0
+        if id_masivo:
+            st.markdown('<div class="step-box">', unsafe_allow_html=True)
+            cant_masivo = st.number_input("2. CANTIDAD (Solo números)", min_value=0, step=1)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # PASO 3: UBICACION (Solo si hay Cantidad > 0)
+        ubi_masivo = ""
+        if id_masivo and cant_masivo > 0:
+            st.markdown('<div class="step-box">', unsafe_allow_html=True)
+            ubi_masivo = st.text_input("3. UBICACIÓN REAL").upper().strip()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # PASO 4: FOTO (Opcional, solo si hay Ubicación)
+        url_masivo = "NO FOTO"
+        if id_masivo and cant_masivo > 0 and ubi_masivo:
+            st.markdown('<div class="step-box">', unsafe_allow_html=True)
+            url_masivo = st.text_input("4. URL DE FOTO (Opcional)").strip()
+            if not url_masivo: url_masivo = "NO FOTO"
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # BOTON FINAL
+            if st.button("✅ SUBIR MATERIAL"):
+                db.collection("materiales").add({
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "item": id_masivo, "cantidad": cant_masivo,
+                    "ubicacion": ubi_masivo, "registrado_por": "YAKO", "foto_url": url_masivo
+                })
+                st.success(f"Cargado: {id_masivo}")
+                st.rerun()
+        else:
+            st.info("Completa los pasos anteriores para habilitar la carga.")
+
+    with t4:
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             if u.id != "YAKO":
                 c_u, c_b = st.columns([3, 1])
                 c_u.write(f"ID: {u.id} | {u.to_dict().get('estado')}")
-                if c_b.button("ACTIVAR / 활성화", key=u.id):
+                if c_b.button("ACTIVAR", key=u.id):
                     db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
 
-    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 # --- RUTAS ---
 if st.session_state.page == 'login': login()
