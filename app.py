@@ -137,14 +137,14 @@ def formulario():
     if cod:
         docs = db.collection(cat).where("item", "==", cod).stream()
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
-        st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{stock_calc}**")
+        st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{max(0, stock_calc)}**")
     col_c1, col_c2 = st.columns(2)
     cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant2 = col_c2.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
     solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip() if acc == "SALIDA" else ""
     ubi_fija = ""
     if cod:
-        doc_ubi = db.collection(cat).where("item", "==", cod).limit(10).stream()
+        doc_ubi = db.collection(cat).where("item", "==", cod).limit(20).stream()
         for d in doc_ubi:
             u_temp = d.to_dict().get("ubicacion", "")
             if u_temp != "SALIDA": ubi_fija = u_temp; break
@@ -173,32 +173,51 @@ def buscar():
                     data['categoria_db'] = col
                     resultados.append(data)
         if resultados:
+            # --- LÓGICA DEL "PERRO" (SELECTBOX CONDICIONAL) ---
             if len(resultados) > 1:
                 st.warning("⚠️ HAY MÁS DE 1 COINCIDENCIA / 1개 이상의 결과가 있습니다")
                 opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
                 seleccion = st.selectbox("ELEGIR MATERIAL / 자재 선택:", list(opciones.keys()))
                 item = opciones[seleccion]
-            else: item = resultados[0]
+            else:
+                item = resultados[0]
+            
             id_f, col_f = item.get('item'), item['categoria_db']
+            
+            # Título Rojo Dinámico (Tu búsqueda)
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
+            
+            # Ubicación fija (ignorando registros de salida)
             ubi_real = "---"
-            # Consulta simplificada para evitar el error de índice
-            docs_ubi = db.collection(col_f).where("item", "==", id_f).limit(20).stream()
+            docs_ubi = db.collection(col_f).where("item", "==", id_f).limit(30).stream()
             for d in docs_ubi:
                 u_temp = d.to_dict().get('ubicacion', '---')
                 if u_temp != "SALIDA": ubi_real = u_temp; break
+            
+            # Cálculo de inventario neto con protección anti-negativos (Mínimo 0)
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
+            
             c1, c2 = st.columns(2)
-            c1.metric("SUMA ACTUAL / 현재 총계", total_neto)
+            c1.metric("SUMA ACTUAL / 현재 총계", max(0, total_neto))
             c2.metric("UBICACIÓN / 위치", ubi_real)
+            
             st.divider()
+            
+            # --- QR Y FOTO CENTRADOS ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <div class="qr-card">
+                    <img src="{qr_url}"><br>
+                    <b style="color:black;">QR {id_f}</b>
+                </div>
+            ''', unsafe_allow_html=True)
+            
             foto = convertir_link_drive(item.get('foto_url', ''))
             if foto: st.image(foto, width=450, caption=f"REF: {item.get('nombre')}")
             st.markdown('</div>', unsafe_allow_html=True)
+            
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
 # --- NAVEGACIÓN ---
@@ -206,4 +225,3 @@ if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
-    
