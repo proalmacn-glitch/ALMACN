@@ -55,12 +55,12 @@ def ir(acc, cat):
     st.rerun()
 
 def animacion_aleatoria():
-    opcion = random.randint(1, 5)
-    if opcion == 1: st.balloons()
-    elif opcion == 2: st.snow()
-    elif opcion == 3: st.toast("🚀 ¡EXITO! / 성공!", icon="🔥")
-    elif opcion == 4: st.toast("📦 ACTUALIZADO / 업데이트됨", icon="✅")
-    elif opcion == 5: st.toast("🎯 COMPLETADO / 완료", icon="🎯")
+    """Solo Globos y Copos de Nieve aleatoriamente."""
+    opcion = random.choice(["globos", "nieve"])
+    if opcion == "globos":
+        st.balloons()
+    else:
+        st.snow()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
@@ -131,18 +131,6 @@ def menu():
         if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    
-    with st.expander("⚙️ MI CUENTA / 내 계정"):
-        new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
-        new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
-        if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
-            doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
-            if doc_ref.exists:
-                old_data = doc_ref.to_dict()
-                db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
-                if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
-                st.success("DATOS ACTUALIZADOS / 업데이트 완료"); st.session_state.user = new_u; st.rerun()
-
     if st.session_state.user == "YAKO" and st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
@@ -177,14 +165,13 @@ def formulario():
     bloqueado = cant1 != cant2 or (acc == "SALIDA" and (cant1 > stock_calc or not sol))
     if st.button("REGISTRAR / 등록", disabled=bloqueado):
         db.collection(cat).add({
-            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
-            "item": cod, 
-            "cantidad": cant1 if acc == "ENTRADA" else -cant1, 
-            "ubicacion": ubi, 
-            "solicitante": sol, 
-            "registrado_por": st.session_state.user
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod, 
+            "cantidad": cant1 if acc == "ENTRADA" else -cant1, "ubicacion": ubi, 
+            "solicitante": sol, "registrado_por": st.session_state.user
         })
-        animacion_aleatoria(); st.success("✅ EXITOSO / 성공!"); st.session_state.scanned_id = ""
+        animacion_aleatoria()
+        st.success("✅ ¡ÉXITO! / 성공!")
+        st.session_state.scanned_id = ""
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
@@ -219,23 +206,24 @@ def buscar():
 
 def admin():
     st.title("PANEL CONTROL / 제어판")
-    t1, t2, t3, t4 = st.tabs(["BORRAR STOCK / 삭제", "EXCEL REPORTE / 엑셀", "CARGA MASIVA / 로드", "USUARIOS / 사용자"])
+    # Se añadió el apartado MI CUENTA aquí / 내 계정 섹션이 여기에 추가되었습니다.
+    t1, t2, t3, t4, t5 = st.tabs(["BORRAR STOCK", "EXCEL REPORTE", "CARGA MASIVA", "USUARIOS", "MI CUENTA"])
+    
     with t1:
         st.subheader("BORRADO / 삭제")
         cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-        del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제) / 특정 ID").upper()
-        if st.checkbox("Confirmar / 확인"):
+        del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제)").upper()
+        if st.checkbox("Confirmar Borrado / 확인"):
             if st.button("🔴 EJECUTAR / 실행"):
                 ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                 for d in ds: db.collection(cdb).document(d.id).delete()
-                st.success("COMPLETADO / 완료"); st.rerun()
+                st.success("BORRADO COMPLETADO / 완료"); st.rerun()
     with t2:
         ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
                 df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOL','registrado_por':'USER'})
-                # SE ELIMINÓ LA COLUMNA NOMBRE SEGÚN SOLICITUD / 이름 열이 삭제되었습니다.
                 csv = df[['FECHA','ID','MOV','UBICACIÓN','SOL','USER']].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
     with t3:
@@ -251,7 +239,7 @@ def admin():
                 })
             st.success("CARGA LISTA / 완료")
     with t4:
-        st.subheader("GESTIÓN DE ACCESOS / 액세스 관리")
+        st.subheader("GESTIÓN DE ACCESOS / 관리")
         uds = db.collection("USUARIOS").stream()
         for u in uds:
             ud = u.to_dict()
@@ -262,6 +250,18 @@ def admin():
                     db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
                 if c2.button("BORRAR / 삭제", key=f"d_{u.id}"): 
                     db.collection("USUARIOS").document(u.id).delete(); st.rerun()
+    with t5:
+        st.subheader("⚙️ EDITAR MIS CREDENCIALES / 내 자격 증명 편집")
+        new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
+        new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
+        if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
+            doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
+            if doc_ref.exists:
+                old_data = doc_ref.to_dict()
+                db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
+                if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
+                st.success("DATOS ACTUALIZADOS / 완료"); st.session_state.user = new_u; st.rerun()
+
     if st.button("VOLVER AL MENÚ / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
