@@ -28,11 +28,13 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- UTILIDADES / 유틸리티 ---
+# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def convertir_link_drive(url):
-    """Convierte links de Drive para visualización directa."""
+    """Convierte links de Drive para visualización directa en la App."""
+    if not url or url == "NO FOTO":
+        return None
     if 'drive.google.com' in url:
-        match = re.search(r'd/([^/]+)', url)
+        match = re.search(r'(?:id=|d/)([-\w]{25,})', url)
         if match:
             file_id = match.group(1)
             return f'https://drive.google.com/uc?export=view&id={file_id}'
@@ -54,7 +56,7 @@ def ir(acc, cat):
     st.session_state.scanned_id = ""
     st.rerun()
 
-# --- ESTILOS VISUALES / 시각적 스타일 ---
+# --- ESTILOS VISUALES / 시각적 스타일 (CENTRADO Y COLORES) ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -78,7 +80,7 @@ st.markdown("""
         background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; 
     }
     
-    /* CENTRADO TOTAL */
+    /* CENTRADO TOTAL DE CONTENIDO */
     .center-container {
         display: flex;
         flex-direction: column;
@@ -96,6 +98,7 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
+    /* Forzar centrado de imágenes nativas */
     div[data-testid="stImage"] {
         display: flex;
         justify-content: center;
@@ -145,6 +148,7 @@ def login():
         st.session_state.user="INVITADO"; ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    # GIF DE INICIO
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -220,6 +224,7 @@ def buscar():
             c2.metric("UBICACIÓN / 위치", item_elegido.get('ubicacion', '---'))
             
             st.divider()
+            # SECCIÓN CENTRADA
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
             st.markdown(f'''
@@ -229,9 +234,10 @@ def buscar():
                 </div>
             ''', unsafe_allow_html=True)
             
-            foto = item_elegido.get('foto_url', '')
-            if foto and foto not in ["NO FOTO", "ERROR"]:
-                st.image(convertir_link_drive(foto), width=450, caption=f"REFERENCIA / 참조: {item_elegido.get('nombre')}")
+            foto_db = item_elegido.get('foto_url', '')
+            link_directo = convertir_link_drive(foto_db)
+            if link_directo:
+                st.image(link_directo, width=450, caption=f"REFERENCIA / 참조: {item_elegido.get('nombre')}")
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
