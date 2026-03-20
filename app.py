@@ -86,13 +86,32 @@ def login():
     st.title("LOGIN / 로그인")
     u_in = st.text_input("USUARIO / 사용자").upper().strip()
     p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
-    if st.button("ENTRAR / 입장"):
-        doc = db.collection("USUARIOS").document(u_in).get()
-        if doc.exists and str(doc.to_dict().get('clave')) == p_in:
-            st.session_state.user = u_in
-            st.session_state.page = 'menu'; st.rerun()
-        else: st.error("DATOS INCORRECTOS / 잘못된 정보")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("ENTRAR / 입장"):
+            doc = db.collection("USUARIOS").document(u_in).get()
+            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
+                st.session_state.user = u_in
+                st.session_state.page = 'menu'; st.rerun()
+            else: st.error("DATOS INCORRECTOS / 잘못된 정보")
+    with col2:
+        if st.button("REGISTRARSE / 등록"):
+            u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
+            st.success(f"User: {u}\nPass: {p}")
+            
     st.divider()
+    
+    # --- BOTONES DE ACCESO RÁPIDO (RESTAURADOS) ---
+    c_inv1, c_inv2 = st.columns(2)
+    if c_inv1.button("SALIDA MAT INVITADO / 자재 출고 (게스트)"):
+        st.session_state.user = "INVITADO"; ir("SALIDA", "materiales")
+    if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고 (게스트)"):
+        st.session_state.user = "INVITADO"; ir("SALIDA", "holders")
+    
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -158,7 +177,7 @@ def formulario():
         st.balloons()
         st.session_state.scanned_id = ""
         
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
@@ -174,20 +193,18 @@ def buscar():
                     resultados.append(data)
         
         if resultados:
-            # --- LÓGICA DEL "PERRO" (SELECTBOX CONDICIONAL) ---
+            # --- LÓGICA DEL "PERRO" ---
             if len(resultados) > 1:
                 opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
                 seleccion = st.selectbox("VARIOS ENCONTRADOS / 여러 개 발견됨:", list(opciones.keys()))
                 item = opciones[seleccion]
             else:
-                item = resultados[0] # Solo hay uno, se elige directo sin barra desplegable
+                item = resultados[0]
             
             id_f, col_f = item.get('item'), item['categoria_db']
             
-            # --- TÍTULO ROJO DINÁMICO (TEXTO VERDE) ---
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
             
-            # Cálculo de inventario neto
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
             
@@ -197,7 +214,6 @@ def buscar():
             
             st.divider()
             
-            # --- QR Y FOTO CENTRADOS ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
             st.markdown(f'''
