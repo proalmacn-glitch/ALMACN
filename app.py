@@ -105,9 +105,11 @@ def login():
     if c2.button("SALIDA HOLDERS / 홀더 출고"):
         st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
     
-    # BOTÓN RESTAURADO EN LOGIN
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"):
         st.session_state.page = 'buscar'; st.rerun()
+
+    # --- EL GIF REGRESÓ ---
+    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
     st.title("ALMACÉN / 창고")
