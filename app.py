@@ -43,6 +43,7 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; margin-top: 20px; background-color: #220000; text-align: center; }
+    .qr-box { background-color: white; padding: 10px; border-radius: 10px; text-align: center; margin-top: 10px; display: inline-block; color: black; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -55,7 +56,6 @@ if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 # ================= FUNCIONES TÉCNICAS =================
 
 def decodificar_qr(foto):
-    """Detecta el texto de un QR o Código de Barras"""
     try:
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
@@ -80,6 +80,7 @@ def login():
     st.markdown("<h3 style='color: white !important;'>ALMACÉN / 창고</h3>", unsafe_allow_html=True)
     u_in = st.text_input("Usuario / 사용자").upper().strip()
     p_in = st.text_input("Clave / 비밀번호", type="password").strip()
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
@@ -97,11 +98,16 @@ def login():
             st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
     
     st.divider()
+    st.markdown("<h4 style='text-align: center;'>SALIDA RÁPIDA / 빠른 출고</h4>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
-    if c1.button("SALIDA MATERIALES / 자재 출고"): 
-        st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
-    if c2.button("SALIDA HOLDERS / 홀더 출고"): 
-        st.session_state.user="INVITADO"; ir("SALIDA", "holders")
+    if c1.button("SALIDA MATERIALES / 자재 출고"):
+        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "materiales")
+    if c2.button("SALIDA HOLDERS / 홀더 출고"):
+        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
+    
+    # BOTÓN RESTAURADO EN LOGIN
+    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"):
+        st.session_state.page = 'buscar'; st.rerun()
 
 def menu():
     st.title("ALMACÉN / 창고")
@@ -115,25 +121,31 @@ def menu():
         st.subheader("HOLDERS / 홀더")
         if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+    
     st.divider()
-    if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    if st.button("SALIR / 로그아웃"): st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
+    if st.button("🔍 BUSCAR / 검색"): 
+        st.session_state.page = 'buscar'; st.rerun()
+    
+    if st.session_state.user_status == "YAKO":
+        if st.button("PANEL CONTROL / 제어판"): 
+            st.session_state.page = 'admin'; st.rerun()
+            
+    if st.button("SALIR / 로그아웃"): 
+        st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
 
 def formulario():
     cat = st.session_state.get('categoria', 'materiales')
     acc = st.session_state.get('accion', 'ENTRADA')
     st.header(f"{cat.upper()} - {acc}")
     
-    # --- ESCÁNER CON AUTO-LLENADO ---
     with st.expander("📷 ESCANEAR QR / QR 스캔", expanded=True):
         cam_scan = st.camera_input("Pon el código frente a la cámara", key="cam_qr")
         if cam_scan:
-            resultado = decodificar_qr(cam_scan)
-            if resultado:
-                st.session_state.scanned_id = resultado
-                st.success(f"DETECTADO: {resultado}")
-            else:
-                st.warning("No detectado / 감지되지 않음")
+            codigo = decodificar_qr(cam_scan)
+            if codigo:
+                st.session_state.scanned_id = codigo
+                st.success(f"DETECTADO: {codigo}")
+            else: st.warning("No detectado / 감지되지 않음")
 
     cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
     cant = st.number_input("CANTIDAD / 수량", min_value=1, step=1)
@@ -169,7 +181,8 @@ def formulario():
         st.session_state.scanned_id = ""
         if st.button("SIGUIENTE / 다음"): st.rerun()
 
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER / 돌아가기"): 
+        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
@@ -192,11 +205,14 @@ def buscar():
             c1.metric("STOCK / 재고", stock); c2.metric("UBICACIÓN / 위치", u_ubi)
             if f_url:
                 try: st.image(f_url, caption=f"ID: {c}")
-                except: st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
+                except: st.warning("Imagen no disponible")
             
+            qr_u = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
+            st.markdown(f'<div class="qr-box"><img src="{qr_u}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
+
             if st.session_state.user_status == "YAKO":
                 st.markdown('<div class="yako-adjust"><h3>⚠️ AJUSTE YAKO / 야코 조정</h3>', unsafe_allow_html=True)
-                aq = st.number_input("Nueva Cantidad / 수량 조정", step=1)
+                aq = st.number_input("Ajuste Cantidad / 수량 조정", step=1)
                 au = st.text_input("Nueva Ubicación / 실제 위치").upper()
                 if st.button("CONFIRMAR AJUSTE / 조정 확인"):
                     db.collection(col_found).add({
@@ -206,10 +222,57 @@ def buscar():
                     st.success("OK"); st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
         else: st.warning("No encontrado / 찾을 수 없음")
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    
+    if st.button("VOLVER / 돌아가기"): 
+        st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
-# --- CONTROLADOR ---
+def admin():
+    st.title("PANEL CONTROL / 제어판")
+    t1, t2, t3, t4, t5 = st.tabs(["BORRAR", "EXCEL", "CARGA", "PERFIL", "USUARIOS"])
+    
+    with t1:
+        st.subheader("Eliminar / 삭제")
+        col_db = st.selectbox("Categoría", ["materiales", "holders"])
+        c_del = st.text_input("ID a Borrar").upper()
+        if st.button("ELIMINAR TODO / 전체 삭제"):
+            docs = db.collection(col_db).where("item", "==", c_del).stream()
+            for d in docs: db.collection(col_db).document(d.id).delete()
+            st.success("OK")
+
+    with t2:
+        ce_s = st.selectbox("Descargar / 다운로드", ["materiales", "holders"], key="admin_excel_col")
+        if st.button("DESCARGAR / 다운로드"):
+            data_e = [d.to_dict() for d in db.collection(ce_s).stream()]
+            if data_e:
+                df = pd.DataFrame(data_e)
+                st.download_button("Descargar CSV", df.to_csv(index=False).encode('utf-8-sig'), f"{ce_s}.csv")
+
+    with t3:
+        txt = st.text_area("ID CANT UBICACION")
+        if st.button("SUBIR LISTA / 목록 업로드"):
+            for l in txt.split('\n'):
+                p = l.split()
+                if len(p)>=3:
+                    db.collection("materiales").add({
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": p[0].upper(),
+                        "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO"
+                    })
+            st.success("Cargado")
+
+    with t5:
+        u_docs = db.collection("USUARIOS").stream()
+        for u in u_docs:
+            if u.id != "YAKO":
+                c_u, c_b = st.columns([3, 1])
+                c_u.write(f"ID: {u.id} | {u.to_dict().get('estado')}")
+                if c_b.button("ACTIVAR / 활성화", key=u.id):
+                    db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
+
+    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+
+# --- RUTAS ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
+elif st.session_state.page == 'admin': admin()
