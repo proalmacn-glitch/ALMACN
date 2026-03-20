@@ -66,9 +66,7 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; }
-    .qr-card { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; margin-bottom: 20px; }
     div[data-testid="stImage"] { display: flex; justify-content: center; }
-    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -89,17 +87,15 @@ def login():
             doc = db.collection("USUARIOS").document(u_in).get()
             data = doc.to_dict() if doc.exists else None
             if data and str(data.get('clave')) == p_in:
-                if data.get('estado') in ['ACTIVO', 'ADMIN_MASTER'] or u_in == "YAKO":
-                    st.session_state.user = u_in
-                    st.session_state.user_status = "YAKO" if data.get('estado') == 'ADMIN_MASTER' or u_in == "YAKO" else "ACTIVO"
-                    st.session_state.page = 'menu'; st.rerun()
-                else: st.warning("ESPERANDO ACTIVACIÓN / 승인 대기 중")
-            else: st.error("ACCESO DENEGADO / access 거부됨")
+                st.session_state.user = u_in
+                st.session_state.user_status = "YAKO" if data.get('estado') == 'ADMIN_MASTER' or u_in == "YAKO" else "ACTIVO"
+                st.session_state.page = 'menu'; st.rerun()
+            else: st.error("DATOS INCORRECTOS / 잘못된 정보")
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USUARIO{random.randint(100, 999)}", f"PASS{random.randint(10, 99)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "PENDIENTE", "nombre_personal": u})
-            st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
+            st.success(f"User: {u}\nPass: {p}")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
@@ -126,7 +122,6 @@ def formulario():
     acc = st.session_state.accion
     st.header(f"{cat.upper()} - {acc}")
     
-    # CAMARA DESPLEGABLE / 드롭다운 카메라
     with st.expander("📷 USAR CÁMARA / 카메라 사용", expanded=False):
         cam = st.camera_input("QR SCAN")
         if cam:
@@ -134,27 +129,53 @@ def formulario():
             if res: st.session_state.scanned_id = res
             
     cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
-    cant = st.number_input("CANTIDAD / 수량", min_value=1)
+    
+    # --- Lógica de Stock Actual ---
+    stock_actual = 0
+    if cod:
+        docs_s = db.collection(cat).where("item", "==", cod).stream()
+        stock_actual = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
+        st.write(f"📊 STOCK ACTUAL / 현재 재고: **{stock_actual}**")
+
+    # --- Campos de Cantidad ---
+    col_c1, col_c2 = st.columns(2)
+    cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="c1")
+    cant2 = col_c2.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="c2")
+    
+    solicitante = ""
+    if acc == "SALIDA":
+        solicitante = st.text_input("NOMBRE DE SOLICITANTE / 신청자 이름").upper().strip()
+    
     ubi = st.text_input("UBICACIÓN / 위치").upper() if acc == "ENTRADA" else "SALIDA"
     
-    # CONFIRMAR CANTIDAD / 수량 확인
-    confirmar = st.checkbox("CONFIRMAR DATOS / 데이터 확인")
+    # --- Validaciones Críticas ---
+    bloqueado = False
+    if cant1 != cant2:
+        st.error("LA CANTIDAD NO COINCIDE / 수량이 일치하지 않습니다")
+        bloqueado = True
+    
+    if acc == "SALIDA":
+        if cant1 > stock_actual:
+            st.error(f"ERROR: NO HAY STOCK SUFICIENTE (DISPONIBLE: {stock_actual}) / 재고 부족")
+            bloqueado = True
+        if not solicitante:
+            st.warning("DEBE INGRESAR EL NOMBRE DEL SOLICITANTE / 신청자 이름을 입력해야 합니다")
+            bloqueado = True
 
-    # Obtener nombre automático
-    nombre_auto = "NUEVO / 새로운"
-    docs = db.collection(cat).where("item", "==", cod).limit(1).stream()
-    for d in docs: nombre_auto = d.to_dict().get('nombre', 'NUEVO / 새로운')
-
-    if st.button("REGISTRAR / 등록", disabled=not confirmar):
+    if st.button("REGISTRAR ACCIÓN / 작업 등록", disabled=bloqueado):
         db.collection(cat).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "item": cod, "nombre": nombre_auto,
-            "cantidad": cant if acc == "ENTRADA" else -cant,
-            "ubicacion": ubi, "registrado_por": st.session_state.user
+            "item": cod,
+            "cantidad": cant1 if acc == "ENTRADA" else -cant1,
+            "ubicacion": ubi,
+            "solicitante": solicitante,
+            "registrado_por": st.session_state.user
         })
-        st.success("REGISTRADO EXITOSAMENTE / 등록 완료")
-        st.session_state.scanned_id = ""; st.rerun()
-        
+        st.success(f"✅ ¡ACCIÓN EFECTUADA CON ÉXITO! / 작업이 성공적으로 완료되었습니다!")
+        st.session_state.scanned_id = ""
+        st.balloons() # Animación de éxito
+        # st.rerun() # Opcional: reiniciar tras éxito
+
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def buscar():
@@ -187,65 +208,33 @@ def buscar():
             st.divider()
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="background:white; padding:10px; border-radius:10px;"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
             foto = convertir_link_drive(item.get('foto_url', ''))
-            if foto: st.image(foto, width=450, caption=f"REFERENCIA / 참조: {item.get('nombre')}")
+            if foto: st.image(foto, width=450)
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
 def admin():
-    if st.session_state.user_status != "YAKO": st.error("PROHIBIDO / 금지됨"); return
+    if st.session_state.user_status != "YAKO": st.error("PROHIBIDO"); return
     st.title("PANEL CONTROL / 제어판")
-    t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "REPORTE EXCEL / 엑셀", "CARGA / 업로드", "USUARIOS / 사용자"])
+    t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "REPORTE EXCEL", "CARGA", "USUARIOS"])
     
-    with t1:
-        col_db = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-        c_del = st.text_input("ID ESPECÍFICO / 특정 ID").upper()
-        if st.checkbox("SÍ, BORRAR / 네, 삭제"):
-            if st.button("🔴 CONFIRMAR / 확인"):
-                docs = db.collection(col_db).where("item", "==", c_del).stream() if c_del else db.collection(col_db).stream()
-                for d in docs: db.collection(col_db).document(d.id).delete()
-                st.success("ELIMINADO / 삭제됨"); st.rerun()
-                
     with t2:
         ce_s = st.selectbox("COLECCIÓN / 컬렉션", ["materiales", "holders"])
-        if st.button("📥 DESCARGAR REPORTE / 보고서 다운로드"):
+        if st.button("📥 DESCARGAR REPORTE"):
             data = [d.to_dict() for d in db.collection(ce_s).order_by("fecha").stream()]
             if data:
                 df = pd.DataFrame(data).rename(columns={
                     'fecha': 'FECHA Y HORA', 'item': 'ID', 'nombre': 'NOMBRE',
-                    'cantidad': 'MOVIMIENTO', 'ubicacion': 'UBICACIÓN', 'registrado_por': 'USUARIO'
+                    'cantidad': 'MOVIMIENTO', 'ubicacion': 'UBICACIÓN', 
+                    'registrado_por': 'USUARIO', 'solicitante': 'SOLICITANTE'
                 })
-                csv = df[['FECHA Y HORA', 'ID', 'NOMBRE', 'MOVIMIENTO', 'UBICACIÓN', 'USUARIO']].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("BAJAR EXCEL / 엑셀 다운로드", csv, f"Reporte_{ce_s}.csv", "text/csv")
-
-    with t3:
-        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
-        archivo = st.file_uploader("SUBIR / 업로드 (.xlsx)", type=['xlsx'])
-        if archivo and st.button("🚀 INICIAR / 시작"):
-            df_in = pd.read_excel(archivo)
-            for _, f in df_in.iterrows():
-                db.collection(dest).add({
-                    "nombre": str(f['NOMBRE']).upper(), "item": str(f['ID']).upper(),
-                    "cantidad": int(f['CANTIDAD']), "ubicacion": str(f['UBICACIÓN']).upper(),
-                    "foto_url": str(f.get('FOTO', 'NO FOTO')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "registrado_por": "ADMIN_CARGA"
-                })
-            st.success("CARGA LISTA / 업로드 완료")
-
-    with t4:
-        u_docs = db.collection("USUARIOS").stream()
-        for u in u_docs:
-            ud = u.to_dict()
-            if ud.get('estado') != "ADMIN_MASTER":
-                with st.container():
-                    st.markdown(f'<div class="user-card">', unsafe_allow_html=True)
-                    st.write(f"**ID:** {u.id} | **ESTADO:** {ud.get('estado')}")
-                    c1, c2 = st.columns(2)
-                    if c1.button("ACTIVAR / 활성화", key=f"act_{u.id}"): db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
-                    if c2.button("BORRAR / 삭제", key=f"del_{u.id}"): db.collection("USUARIOS").document(u.id).delete(); st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                # Reordenar para incluir solicitante
+                cols = ['FECHA Y HORA', 'ID', 'NOMBRE', 'MOVIMIENTO', 'UBICACIÓN', 'SOLICITANTE', 'USUARIO']
+                df = df[cols]
+                csv = df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button("BAJAR EXCEL", csv, f"Reporte_{ce_s}.csv", "text/csv")
 
     if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
