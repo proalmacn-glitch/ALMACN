@@ -9,10 +9,10 @@ import numpy as np
 import cv2
 from pyzbar.pyzbar import decode
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
 
-# --- CONEXIÓN FIREBASE ---
+# --- CONEXIÓN FIREBASE / 파이어베이스 연결 ---
 if not firebase_admin._apps:
     try:
         bucket_name = 'almacnn.firebasestorage.app'
@@ -25,132 +25,153 @@ if not firebase_admin._apps:
                 cred = credentials.Certificate(dict(st.secrets["textkey"]))
                 firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
-        st.error(f"Error Conexión: {e}")
+        st.error(f"Error Conexión / 연결 오류: {e}")
 
 db = firestore.client()
 
-# --- ESTILOS ---
+# --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
-    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label { color: yellow !important; }
-    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; }
-    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; text-align: center; }
-    .qr-container { background-color: white; padding: 10px; border-radius: 10px; display: inline-block; text-align: center; }
-    .center-content { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    .stButton>button:hover { background-color: red; color: white; }
+    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stFileUploader"] label, div[data-testid="stSelectbox"] label { color: yellow !important; font-size: 16px !important; }
+    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
+    
+    /* Color Cian Brillante con Resplandor para Métricas */
+    div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00ffff !important; text-align: center !important; text-shadow: 0 0 15px #00ffff, 0 0 5px #00ffff; }
+    div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
+    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    
+    .qr-container { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; text-align: center; margin-top: 20px; }
+    .center-content { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
+    .stImage { display: flex; justify-content: center; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- VARIABLES DE SESIÓN ---
+# --- VARIABLES DE SESIÓN / 세션 변수 ---
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'user_status' not in st.session_state: st.session_state.user_status = None
+if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
-# ================= FUNCIONES =================
+# ================= FUNCIONES TÉCNICAS =================
 
 def ir(acc, cat):
     st.session_state.accion = acc; st.session_state.categoria = cat
     st.session_state.page = 'form'; st.rerun()
 
+# ================= VISTA: BUSCAR / 검색 =================
+
 def buscar():
     st.header("BUSCAR / 검색")
-    # Entrada de texto única para Nombre o ID
     busqueda = st.text_input("NOMBRE o ID / 이름 또는 ID").upper().strip()
 
     if busqueda:
         resultados = []
         for col in ["materiales", "holders"]:
-            # Buscamos en toda la base de datos para filtrar localmente (es más flexible)
+            # Rastrear todos los documentos para búsqueda híbrida (Nombre o ID)
             docs = db.collection(col).stream()
             for d in docs:
                 data = d.to_dict()
                 nombre = str(data.get('nombre', '')).upper()
                 idx = str(data.get('item', '')).upper()
                 
-                # Si coincide el nombre o el ID lo agregamos a la lista
+                # Si el texto buscado está contenido en el Nombre o es igual al ID
                 if busqueda in nombre or busqueda == idx:
-                    data['categoria_db'] = col # Guardamos de qué tabla viene
+                    data['categoria_db'] = col
                     resultados.append(data)
         
+        item_elegido = None
+        
         if len(resultados) > 1:
-            st.warning(f"Se encontraron {len(resultados)} coincidencias. Selecciona una:")
-            # Creamos una lista de opciones legibles
-            opciones = {f"{r['nombre']} ({r['item']})": r for r in resultados}
-            seleccion = st.selectbox("Resultados encontrados:", list(opciones.keys()))
+            st.warning(f"RESULTADOS ENCONTRADOS / 검색 결과: {len(resultados)}")
+            # Crear lista de opciones: "NOMBRE [ID]"
+            opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
+            seleccion = st.selectbox("SELECCIONA EL MATERIAL / 항목을 선택하세요:", list(opciones.keys()))
             item_elegido = opciones[seleccion]
         elif len(resultados) == 1:
             item_elegido = resultados[0]
         else:
-            st.error("No se encontró nada / 검색 결과 없음")
-            item_elegido = None
+            st.error("SIN RESULTADOS / 결과 없음")
 
         if item_elegido:
-            # Una vez tenemos el item (ya sea directo o por lista), mostramos la info
-            nombre_f = item_elegido.get('nombre', 'SIN NOMBRE')
             id_f = item_elegido.get('item', '---')
+            nombre_f = item_elegido.get('nombre', '---')
             col_f = item_elegido['categoria_db']
             
-            # Calcular Stock Real
+            # Cálculo de Stock Consolidado
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_stock = sum([doc.to_dict().get('cantidad', 0) for doc in docs_stock])
             
+            # Última ubicación registrada
+            ubi_f = item_elegido.get('ubicacion', '---')
+
             st.markdown(f"<h2 style='color: red;'>{nombre_f}</h2>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center;'><b>ID:</b> {id_f}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
-            c1.metric("STOCK TOTAL", total_stock)
-            c2.metric("ID", id_f)
+            c1.metric("STOCK TOTAL / 총 재고", total_stock)
+            c2.metric("UBICACIÓN / 위치", ubi_f)
 
+            # --- CONTENEDOR CENTRADO PARA QR E IMAGEN ---
             st.markdown('<div class="center-content">', unsafe_allow_html=True)
             
-            # QR CENTRADO
+            # Código QR Generado
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'<div class="qr-container"><img src="{qr_url}"><br><b style="color:black">QR {id_f}</b></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <div class="qr-container">
+                    <img src="{qr_url}"><br>
+                    <b style="color: black;">CÓDIGO QR / QR 코드</b><br>
+                    <span style="color: black; font-size: 12px;">{id_f}</span>
+                </div>
+            ''', unsafe_allow_html=True)
             
-            # IMAGEN CENTRADA
+            # Imagen de Referencia (Centrada por CSS)
             foto_url = item_elegido.get('foto_url', '')
             if foto_url and foto_url not in ["NO FOTO", "ERROR"]:
-                st.image(foto_url, width=400, caption=f"Referencia: {nombre_f}")
+                st.image(foto_url, width=450, caption=f"REFERENCIA / 참조: {nombre_f}")
             
             st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("VOLVER / 돌아가기"):
         st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
-# ================= VISTAS RESTANTES (RESUMIDAS) =================
+# ================= VISTAS DE ACCESO =================
 
 def login():
     st.title("LOGIN / 로그인")
-    u = st.text_input("Usuario").upper().strip()
-    p = st.text_input("Clave", type="password")
-    if st.button("ENTRAR"):
+    u = st.text_input("Usuario / 사용자").upper().strip()
+    p = st.text_input("Clave / 비밀번호", type="password")
+    if st.button("ENTRAR / 입장"):
         doc = db.collection("USUARIOS").document(u).get()
         if doc.exists and str(doc.to_dict().get('clave')) == p:
             st.session_state.user = u
             st.session_state.user_status = "YAKO" if u == "YAKO" else "ACTIVO"
             st.session_state.page = 'menu'; st.rerun()
-        else: st.error("Error")
+        else: st.error("ERROR DE ACCESO / 로그인 오류")
     st.divider()
     c1, c2 = st.columns(2)
-    if c1.button("SALIDA MATERIALES"): ir("SALIDA", "materiales")
-    if c2.button("SALIDA HOLDERS"): ir("SALIDA", "holders")
-    if st.button("🔍 BUSCAR"): st.session_state.page = 'buscar'; st.rerun()
+    if c1.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
+    if c2.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
 
 def menu():
-    st.title("MENÚ / 메뉴")
-    st.info(f"Usuario: {st.session_state.user}")
+    st.title("ALMACÉN / 창고")
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
     with c2:
-        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
-    if st.button("🔍 BUSCAR"): st.session_state.page = 'buscar'; st.rerun()
-    if st.button("SALIR"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+        if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+    if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.button("SALIR / 로그아웃"): 
+        st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
-# --- NAVEGACIÓN ---
+# --- SISTEMA DE NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'buscar': buscar()
