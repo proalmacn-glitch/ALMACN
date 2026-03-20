@@ -224,14 +224,13 @@ def admin():
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
-            # SE EXCLUYE AL ADMINISTRADOR MAESTRO DE LA LISTA
+            # CRÍTICO: Filtramos para que tu cuenta ADMIN_MASTER no se muestre nunca en la lista
             if ud.get('estado') != "ADMIN_MASTER":
                 with st.container():
                     st.markdown(f'<div class="user-card">', unsafe_allow_html=True)
                     col_u1, col_u2 = st.columns([2, 1])
                     with col_u1:
                         st.write(f"**ID:** {u.id} | **Estado:** {ud.get('estado')}")
-                        # OJITO PARA VER CONTRASEÑA
                         st.text_input(f"Contraseña de {u.id}", value=ud.get('clave'), type="password", key=f"pw_{u.id}", disabled=True)
                     with col_u2:
                         if st.button("ACTIVAR", key=f"act_{u.id}"):
@@ -241,7 +240,7 @@ def admin():
                     st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("⚙️ Perfil Maestro (YAKO)")
+        st.subheader("⚙️ Configuración Perfil Maestro (YAKO)")
         admin_actual = db.collection("USUARIOS").where("estado", "==", "ADMIN_MASTER").get()
         current_id = admin_actual[0].id if admin_actual else "YAKO"
         current_pw = admin_actual[0].to_dict().get('clave') if admin_actual else "1234"
