@@ -108,7 +108,6 @@ def login():
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"):
         st.session_state.page = 'buscar'; st.rerun()
 
-    # --- EL GIF REGRESÓ ---
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -199,15 +198,20 @@ def buscar():
                 u_reg = str(dt.get('ubicacion', '')).upper()
                 if f_reg >= u_fecha and u_reg != "SALIDA" and u_reg != "":
                     u_fecha = f_reg; u_ubi = u_reg
-                if dt.get('foto_url') not in ["NO FOTO", "ERROR", None]: f_url = dt.get('foto_url')
+                # Cargar imagen si existe en el registro
+                if dt.get('foto_url') and dt.get('foto_url') not in ["NO FOTO", "ERROR", ""]:
+                    f_url = dt.get('foto_url')
         
         if col_found:
             st.subheader(f"ID: {c}")
             c1, c2 = st.columns(2)
             c1.metric("STOCK / 재고", stock); c2.metric("UBICACIÓN / 위치", u_ubi)
+            
             if f_url:
-                try: st.image(f_url, caption=f"ID: {c}")
-                except: st.warning("Imagen no disponible")
+                try: 
+                    st.image(f_url, caption=f"REFERENCIA: {c}")
+                except: 
+                    st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
             
             qr_u = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={c}"
             st.markdown(f'<div class="qr-box"><img src="{qr_u}"><br><b style="color:black;">{c}</b></div>', unsafe_allow_html=True)
@@ -250,16 +254,23 @@ def admin():
                 st.download_button("Descargar CSV", df.to_csv(index=False).encode('utf-8-sig'), f"{ce_s}.csv")
 
     with t3:
-        txt = st.text_area("ID CANT UBICACION")
+        st.subheader("Carga Masiva / 대량 업로드")
+        st.write("Formato: `ID CANT UBICACION URL_IMAGEN` (Separados por espacios)")
+        txt = st.text_area("Pega tu lista aquí")
         if st.button("SUBIR LISTA / 목록 업로드"):
             for l in txt.split('\n'):
                 p = l.split()
-                if len(p)>=3:
+                if len(p) >= 3:
+                    item_url = p[3] if len(p) >= 4 else "NO FOTO"
                     db.collection("materiales").add({
-                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": p[0].upper(),
-                        "cantidad": int(p[1]), "ubicacion": p[2].upper(), "registrado_por": "YAKO"
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                        "item": p[0].upper(),
+                        "cantidad": int(p[1]), 
+                        "ubicacion": p[2].upper(), 
+                        "registrado_por": "YAKO",
+                        "foto_url": item_url
                     })
-            st.success("Cargado")
+            st.success("Cargado correctamente / 성공적으로 업로드됨")
 
     with t5:
         u_docs = db.collection("USUARIOS").stream()
