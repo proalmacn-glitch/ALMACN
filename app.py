@@ -44,6 +44,9 @@ st.markdown("""
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .warning-box { border: 2px solid orange; padding: 15px; border-radius: 10px; background-color: #2b1d00; color: white; text-align: center; margin-bottom: 20px; }
     .qr-container { background-color: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 15px; text-align: center; }
+    /* Centrado de imagen */
+    .stImage { display: flex; justify-content: center; }
+    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -151,7 +154,7 @@ def buscar():
         stock = 0; u_ubi = "---"; f_url = None; col_found = None; u_fecha = ""; final_id = ""; final_nombre = ""
         
         for col in ["materiales", "holders"]:
-            # Búsqueda simultánea por ID y por NOMBRE
+            # BUSQUEDA HIBRIDA CORREGIDA
             docs_id = db.collection(col).where("item", "==", query).stream()
             docs_nom = db.collection(col).where("nombre", "==", query).stream()
             todos_los_docs = list(docs_id) + list(docs_nom)
@@ -166,14 +169,14 @@ def buscar():
                 if dt.get('foto_url') not in ["NO FOTO", "ERROR", None]: f_url = dt.get('foto_url')
         
         if col_found:
-            st.markdown(f"### {final_nombre}")
-            st.write(f"**ID:** {final_id}")
+            st.markdown(f"<h2 style='text-align: center; color: red;'>{final_nombre}</h2>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center;'><b>ID:</b> {final_id}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             c1.metric("STOCK TOTAL / 총 재고", stock)
             c2.metric("UBICACIÓN / 위치", u_ubi)
             
-            # QR CENTRADO
+            # --- QR CENTRADO ---
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={final_id}"
             st.markdown(f'''
                 <div style="text-align: center; margin-top: 15px;">
@@ -185,11 +188,12 @@ def buscar():
                 </div>
             ''', unsafe_allow_html=True)
 
+            # --- IMAGEN DE REFERENCIA CENTRADA ---
             if f_url:
                 try:
-                    st.markdown('<div style="text-align: center; margin-top: 20px;">', unsafe_allow_html=True)
+                    st.divider()
+                    # El estilo CSS .stImage arriba ya maneja el centrado
                     st.image(f_url, caption=f"REFERENCIA / 참조: {final_id}")
-                    st.markdown('</div>', unsafe_allow_html=True)
                 except:
                     st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
         else: st.warning("No encontrado / 찾을 수 없음")
@@ -208,7 +212,7 @@ def admin():
         col_db = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"], format_func=lambda x: x.upper())
         c_del = st.text_input("ID ESPECÍFICO / 특정 ID").upper()
         st.markdown('<div class="warning-box">', unsafe_allow_html=True)
-        st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER")
+        st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER / 이 작업은 취소할 수 없습니다")
         seguro = st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다")
         if seguro:
             if st.button("🔴 CONFIRMAR ELIMINACIÓN / 삭제 확인"):
@@ -230,7 +234,7 @@ def admin():
             data = [d.to_dict() for d in db.collection(ce_s).stream()]
             if data:
                 df_out = pd.DataFrame(data)
-                df_resumen = df_out.groupby('item').agg({'cantidad': 'sum', 'ubicacion': 'last'}).reset_index()
+                df_resumen = df_out.groupby('item').agg({'cantidad': 'sum', 'ubicacion': 'last', 'nombre': 'first'}).reset_index()
                 csv = df_resumen.to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar CSV / CSV 다운로드", csv, f"STOCK_{ce_s.upper()}.csv", "text/csv")
             else: st.info("SIN DATOS / 데이터 없음")
