@@ -36,17 +36,67 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stFileUploader"] label, div[data-testid="stSelectbox"] label { color: yellow !important; font-size: 16px !important; }
-    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     
-    /* Color Cian Brillante con Resplandor para Métricas */
-    div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00ffff !important; text-align: center !important; text-shadow: 0 0 15px #00ffff, 0 0 5px #00ffff; }
-    div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
-    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    /* Etiquetas amarillas */
+    div[data-testid="stTextInput"] label, 
+    div[data-testid="stNumberInput"] label, 
+    div[data-testid="stFileUploader"] label, 
+    div[data-testid="stSelectbox"] label { 
+        color: yellow !important; 
+        font-size: 16px !important; 
+    }
+
+    /* Inputs estilizados */
+    .stTextInput>div>div>input { 
+        text-align: center; 
+        background-color: #111; 
+        color: cyan !important; 
+        font-size: 20px; 
+        font-weight: bold; 
+    }
     
-    .qr-container { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; text-align: center; margin-top: 20px; }
-    .center-content { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
-    .stImage { display: flex; justify-content: center; margin-top: 20px; }
+    /* Métricas: Color Cian Mate (Sin brillo excesivo) */
+    div[data-testid="stMetricValue"] { 
+        font-size: 45px !important; 
+        color: #00cccc !important; 
+        text-align: center !important; 
+        text-shadow: none !important; 
+    }
+    div[data-testid="stMetricLabel"] { 
+        font-size: 18px !important; 
+        color: white !important; 
+        text-align: center !important; 
+    }
+    div[data-testid="stMetric"] { 
+        background-color: #111; 
+        padding: 10px; 
+        border-radius: 10px; 
+        border: 1px solid #333; 
+    }
+    
+    /* Contenedor para centrar QR e Imagen */
+    .center-content { 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        justify-content: center; 
+        text-align: center; 
+        width: 100%; 
+    }
+    
+    .qr-container { 
+        background-color: white; 
+        padding: 15px; 
+        border-radius: 10px; 
+        display: inline-block; 
+        text-align: center; 
+    }
+
+    /* Forzar centrado de imágenes de Streamlit */
+    div[data-testid="stImage"] {
+        display: flex;
+        justify-content: center;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -54,7 +104,6 @@ st.markdown("""
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'user_status' not in st.session_state: st.session_state.user_status = None
-if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
 # ================= FUNCIONES TÉCNICAS =================
 
@@ -71,64 +120,63 @@ def buscar():
     if busqueda:
         resultados = []
         for col in ["materiales", "holders"]:
-            # Rastrear todos los documentos para búsqueda híbrida (Nombre o ID)
             docs = db.collection(col).stream()
             for d in docs:
                 data = d.to_dict()
                 nombre = str(data.get('nombre', '')).upper()
                 idx = str(data.get('item', '')).upper()
-                
-                # Si el texto buscado está contenido en el Nombre o es igual al ID
+                # Búsqueda híbrida (contiene nombre o es ID exacto)
                 if busqueda in nombre or busqueda == idx:
                     data['categoria_db'] = col
                     resultados.append(data)
         
-        item_elegido = None
-        
         if len(resultados) > 1:
             st.warning(f"RESULTADOS ENCONTRADOS / 검색 결과: {len(resultados)}")
-            # Crear lista de opciones: "NOMBRE [ID]"
             opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
-            seleccion = st.selectbox("SELECCIONA EL MATERIAL / 항목을 선택하세요:", list(opciones.keys()))
+            seleccion = st.selectbox("SELECCIONA / 선택하세요:", list(opciones.keys()))
             item_elegido = opciones[seleccion]
         elif len(resultados) == 1:
             item_elegido = resultados[0]
         else:
             st.error("SIN RESULTADOS / 결과 없음")
+            item_elegido = None
 
         if item_elegido:
             id_f = item_elegido.get('item', '---')
             nombre_f = item_elegido.get('nombre', '---')
             col_f = item_elegido['categoria_db']
             
-            # Cálculo de Stock Consolidado
+            # Cálculo de Stock sumando todos los registros con ese ID
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_stock = sum([doc.to_dict().get('cantidad', 0) for doc in docs_stock])
             
-            # Última ubicación registrada
+            # Ubicación (Última registrada)
             ubi_f = item_elegido.get('ubicacion', '---')
 
-            st.markdown(f"<h2 style='color: red;'>{nombre_f}</h2>", unsafe_allow_html=True)
-            st.markdown(f"<p style='text-align: center;'><b>ID:</b> {id_f}</p>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color: red; text-align: center;'>{nombre_f}</h2>", unsafe_allow_html=True)
+            st.markdown(f"<p style='text-align: center;'>ID: {id_f}</p>", unsafe_allow_html=True)
             
             c1, c2 = st.columns(2)
             c1.metric("STOCK TOTAL / 총 재고", total_stock)
             c2.metric("UBICACIÓN / 위치", ubi_f)
 
-            # --- CONTENEDOR CENTRADO PARA QR E IMAGEN ---
+            st.divider()
+
+            # --- SECCIÓN CENTRADA (QR E IMAGEN) ---
             st.markdown('<div class="center-content">', unsafe_allow_html=True)
             
-            # Código QR Generado
+            # Generar Código QR
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
             st.markdown(f'''
                 <div class="qr-container">
                     <img src="{qr_url}"><br>
-                    <b style="color: black;">CÓDIGO QR / QR 코드</b><br>
-                    <span style="color: black; font-size: 12px;">{id_f}</span>
+                    <b style="color: black;">CÓDIGO QR / QR 코드</b>
                 </div>
             ''', unsafe_allow_html=True)
             
-            # Imagen de Referencia (Centrada por CSS)
+            st.markdown('<br>', unsafe_allow_html=True)
+            
+            # Imagen de Referencia
             foto_url = item_elegido.get('foto_url', '')
             if foto_url and foto_url not in ["NO FOTO", "ERROR"]:
                 st.image(foto_url, width=450, caption=f"REFERENCIA / 참조: {nombre_f}")
@@ -138,7 +186,7 @@ def buscar():
     if st.button("VOLVER / 돌아가기"):
         st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
-# ================= VISTAS DE ACCESO =================
+# ================= VISTAS DE ACCESO / MENU =================
 
 def login():
     st.title("LOGIN / 로그인")
@@ -150,7 +198,8 @@ def login():
             st.session_state.user = u
             st.session_state.user_status = "YAKO" if u == "YAKO" else "ACTIVO"
             st.session_state.page = 'menu'; st.rerun()
-        else: st.error("ERROR DE ACCESO / 로그인 오류")
+        else: st.error("DATOS INCORRECTOS / 잘못된 정보")
+    
     st.divider()
     c1, c2 = st.columns(2)
     if c1.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
@@ -159,7 +208,7 @@ def login():
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
+    st.info(f"SESIÓN: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
         if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
@@ -167,11 +216,15 @@ def menu():
     with c2:
         if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+    
+    st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     if st.button("SALIR / 로그아웃"): 
-        st.session_state.user=None; st.session_state.page='login'; st.rerun()
+        st.session_state.user=None
+        st.session_state.page='login'
+        st.rerun()
 
-# --- SISTEMA DE NAVEGACIÓN ---
+# --- CONTROL DE NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'buscar': buscar()
