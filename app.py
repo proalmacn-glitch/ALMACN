@@ -37,13 +37,14 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stFileUploader"] label { color: yellow !important; font-size: 16px !important; }
+    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stFileUploader"] label, div[data-testid="stSelectbox"] label { color: yellow !important; font-size: 16px !important; }
     .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: cyan !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .warning-box { border: 2px solid orange; padding: 15px; border-radius: 10px; background-color: #2b1d00; color: white; text-align: center; margin-bottom: 20px; }
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
+    .qr-container { background-color: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 15px; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -145,24 +146,49 @@ def formulario():
 
 def buscar():
     st.header("BUSCAR / 검색")
-    c = st.text_input("ID / CÓDIGO", key="bus_in").upper().strip()
-    if c:
-        stock = 0; u_ubi = "---"; f_url = None; col_found = None; u_fecha = ""
+    query = st.text_input("ID o NOMBRE DEL MATERIAL", key="bus_in").upper().strip()
+    
+    if query:
+        stock = 0; u_ubi = "---"; f_url = None; col_found = None; u_fecha = ""; final_id = ""; final_nombre = ""
+        
         for col in ["materiales", "holders"]:
-            docs = db.collection(col).where("item", "==", c).stream()
-            for d in docs:
+            docs_id = db.collection(col).where("item", "==", query).stream()
+            docs_nom = db.collection(col).where("nombre", "==", query).stream()
+            
+            todos_los_docs = list(docs_id) + list(docs_nom)
+            
+            for d in todos_los_docs:
                 col_found = col; dt = d.to_dict(); stock += dt.get('cantidad', 0)
+                final_id = dt.get('item', query)
+                final_nombre = dt.get('nombre', 'SIN NOMBRE')
+                
                 if dt.get('fecha', '') >= u_fecha and str(dt.get('ubicacion')).upper() != "SALIDA":
                     u_fecha = dt.get('fecha'); u_ubi = dt.get('ubicacion')
                 if dt.get('foto_url') not in ["NO FOTO", "ERROR", None]: f_url = dt.get('foto_url')
+        
         if col_found:
-            st.subheader(f"ID: {c}")
+            st.markdown(f"### {final_nombre}")
+            st.write(f"**ID:** {final_id}")
+            
             c1, c2 = st.columns(2)
-            c1.metric("STOCK", stock); c2.metric("UBICACIÓN", u_ubi)
+            c1.metric("STOCK TOTAL", stock)
+            c2.metric("ÚLTIMA UBICACIÓN", u_ubi)
+            
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={final_id}"
+            st.markdown(f'''
+                <div style="text-align: center;">
+                    <div class="qr-container">
+                        <img src="{qr_url}" /><br>
+                        <b style="color: black;">CÓDIGO QR</b>
+                    </div>
+                </div>
+            ''', unsafe_allow_html=True)
+
             if f_url:
-                try: st.image(f_url)
+                try: st.image(f_url, caption="Foto de referencia")
                 except: st.warning("Imagen no disponible")
-        else: st.warning("No encontrado")
+        else: st.warning("No se encontró ningún material con ese ID o Nombre.")
+        
     if st.button("VOLVER"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def admin():
@@ -170,12 +196,14 @@ def admin():
         st.error("ACCESO PROHIBIDO"); st.session_state.page = 'login'; st.rerun()
         
     st.title("PANEL CONTROL / 제어판")
-    t1, t2, t3, t4 = st.tabs(["BORRAR/삭제", "EXCEL/엑셀", "CARGA EXCEL", "USUARIOS/사용자"])
+    # PESTAÑAS EN MAYÚSCULAS
+    t1, t2, t3, t4 = st.tabs(["BORRAR/삭제", "EXCEL/REPORTES", "CARGA EXCEL", "USUARIOS/사용자"])
     
     with t1:
-        st.subheader("Eliminar Material o Categoría")
-        col_db = st.selectbox("Categoría a limpiar", ["materiales", "holders"])
-        c_del = st.text_input("ID Específico (Vació para borrar TODO EL STOCK)").upper()
+        st.subheader("ELIMINAR MATERIAL O CATEGORÍA")
+        col_db = st.selectbox("CATEGORÍA A LIMPIAR", ["materiales", "holders"], format_func=lambda x: x.upper())
+        c_del = st.text_input("ID ESPECÍFICO (VACÍO PARA BORRAR TODO EL STOCK)").upper()
+        
         st.markdown('<div class="warning-box">', unsafe_allow_html=True)
         st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER")
         seguro = st.checkbox(f"SÍ, ESTOY SEGURO")
@@ -184,54 +212,69 @@ def admin():
                 if c_del:
                     docs = db.collection(col_db).where("item", "==", c_del).stream()
                     for d in docs: db.collection(col_db).document(d.id).delete()
-                    st.success(f"ID {c_del} eliminado.")
+                    st.success(f"ID {c_del} ELIMINADO.")
                 else:
                     docs = db.collection(col_db).stream()
                     for d in docs: db.collection(col_db).document(d.id).delete()
-                    st.success(f"Stock de {col_db} vaciado.")
+                    st.success(f"STOCK DE {col_db.upper()} VACIADO.")
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with t2:
-        st.subheader("Descargar Stock Actual")
-        ce_s = st.selectbox("Colección a descargar", ["materiales", "holders"], key="desc")
+        st.subheader("DESCARGAR STOCK ACTUAL")
+        ce_s = st.selectbox("COLECCIÓN A DESCARGAR", ["materiales", "holders"], key="desc", format_func=lambda x: x.upper())
         if st.button("📥 GENERAR REPORTE EXCEL"):
             data = [d.to_dict() for d in db.collection(ce_s).stream()]
             if data:
                 df_out = pd.DataFrame(data)
                 df_resumen = df_out.groupby('item').agg({'cantidad': 'sum', 'ubicacion': 'last'}).reset_index()
                 csv = df_resumen.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar CSV", csv, f"stock_{ce_s}.csv", "text/csv")
-            else: st.info("Sin datos.")
+                st.download_button("Descargar CSV", csv, f"STOCK_{ce_s.upper()}.csv", "text/csv")
+            else: st.info("SIN DATOS.")
 
     with t3:
-        st.subheader("Carga Automática")
-        archivo = st.file_uploader("Subir .xlsx (NOMBRE, ID, CANTIDAD, UBICACION, FOTO)", type=['xlsx'])
+        st.subheader("CARGA AUTOMÁTICA DESDE EXCEL")
+        # SELECTOR DE DESTINO
+        destino_excel = st.selectbox("¿A DÓNDE DESEAS SUBIR ESTE EXCEL?", ["MATERIALES", "HOLDERS"])
+        st.info("COLUMNAS REQUERIDAS: NOMBRE, ID, CANTIDAD, UBICACION, FOTO")
+        archivo = st.file_uploader("SUBIR .XLSX", type=['xlsx'])
+        
         if archivo:
             df = pd.read_excel(archivo)
+            st.write("VISTA PREVIA:")
+            st.dataframe(df.head())
+            
             if st.button("🚀 INICIAR CARGA MASIVA"):
-                for _, f in df.iterrows():
+                progreso = st.progress(0)
+                total_filas = len(df)
+                coleccion_destino = "materiales" if destino_excel == "MATERIALES" else "holders"
+                
+                for i, f in df.iterrows():
                     foto = str(f['FOTO']) if pd.notna(f['FOTO']) and str(f['FOTO']).strip() != "" else f"https://picsum.photos/seed/{random.randint(1,999)}/400/300"
-                    db.collection("materiales").add({
-                        "nombre": str(f['NOMBRE']), "item": str(f['ID']).upper(),
-                        "cantidad": int(f['CANTIDAD']), "ubicacion": str(f['UBICACION']).upper(),
-                        "foto_url": foto, "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "registrado_por": "YAKO"
+                    db.collection(coleccion_destino).add({
+                        "nombre": str(f['NOMBRE']).upper().strip(), 
+                        "item": str(f['ID']).upper().strip(),
+                        "cantidad": int(f['CANTIDAD']), 
+                        "ubicacion": str(f['UBICACION']).upper().strip(),
+                        "foto_url": foto, 
+                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                        "registrado_por": "YAKO_EXCEL"
                     })
-                st.success("Carga completada.")
+                    progreso.progress((i + 1) / total_filas)
+                st.success(f"CARGA EN {destino_excel} COMPLETADA CON ÉXITO.")
 
     with t4:
-        st.subheader("Gestión de Usuarios (Solo Empleados)")
+        st.subheader("GESTIÓN DE USUARIOS")
         u_docs = db.collection("USUARIOS").stream()
         for u in u_docs:
             ud = u.to_dict()
-            # CRÍTICO: Filtramos para que tu cuenta ADMIN_MASTER no se muestre nunca en la lista
             if ud.get('estado') != "ADMIN_MASTER":
                 with st.container():
                     st.markdown(f'<div class="user-card">', unsafe_allow_html=True)
                     col_u1, col_u2 = st.columns([2, 1])
                     with col_u1:
-                        st.write(f"**ID:** {u.id} | **Estado:** {ud.get('estado')}")
-                        st.text_input(f"Contraseña de {u.id}", value=ud.get('clave'), type="password", key=f"pw_{u.id}", disabled=True)
+                        st.write(f"**ID:** {u.id} | **ESTADO:** {ud.get('estado')}")
+                        st.text_input(f"CONTRASEÑA DE {u.id}", value=ud.get('clave'), type="password", key=f"pw_{u.id}", disabled=True)
                     with col_u2:
                         if st.button("ACTIVAR", key=f"act_{u.id}"):
                             db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
@@ -240,13 +283,13 @@ def admin():
                     st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
-        st.subheader("⚙️ Configuración Perfil Maestro (YAKO)")
+        st.subheader("⚙️ CONFIGURACIÓN PERFIL MAESTRO")
         admin_actual = db.collection("USUARIOS").where("estado", "==", "ADMIN_MASTER").get()
         current_id = admin_actual[0].id if admin_actual else "YAKO"
         current_pw = admin_actual[0].to_dict().get('clave') if admin_actual else "1234"
 
-        new_admin_id = st.text_input("Editar Nombre Admin Maestro", value=current_id).upper().strip()
-        new_admin_pw = st.text_input("Editar Clave Admin Maestro", value=current_pw, type="password")
+        new_admin_id = st.text_input("EDITAR NOMBRE ADMIN MAESTRO", value=current_id).upper().strip()
+        new_admin_pw = st.text_input("EDITAR CLAVE ADMIN MAESTRO", value=current_pw, type="password")
         
         if st.button("💾 GUARDAR CAMBIOS PERFIL"):
             if new_admin_id != current_id:
@@ -254,12 +297,12 @@ def admin():
             db.collection("USUARIOS").document(new_admin_id).set({
                 "clave": new_admin_pw, "estado": "ADMIN_MASTER", "nombre_personal": new_admin_id
             })
-            st.success("Perfil Maestro actualizado. Reiniciando...")
+            st.success("PERFIL ACTUALIZADO. REINICIANDO...")
             st.session_state.user = None; st.session_state.page = 'login'; st.rerun()
 
     if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
-# --- RUTAS ---
+# --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
