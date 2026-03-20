@@ -43,7 +43,6 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     .warning-box { border: 2px solid orange; padding: 15px; border-radius: 10px; background-color: #2b1d00; color: white; text-align: center; margin-bottom: 20px; }
-    .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     .qr-container { background-color: white; padding: 10px; border-radius: 10px; display: inline-block; margin-top: 15px; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
@@ -54,7 +53,7 @@ if 'user_status' not in st.session_state: st.session_state.user_status = None
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
-# ================= FUNCIONES TÉCNICAS / 기술 기능 =================
+# ================= FUNCIONES TÉCNICAS =================
 
 def decodificar_qr(foto):
     try:
@@ -99,9 +98,9 @@ def login():
     st.divider()
     c1, c2 = st.columns(2)
     if c1.button("SALIDA MATERIALES / 자재 출고"):
-        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "materiales")
+        st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
     if c2.button("SALIDA HOLDERS / 홀더 출고"):
-        st.session_state.user="INVITADO"; st.session_state.user_status="INVITADO"; ir("SALIDA", "holders")
+        st.session_state.user="INVITADO"; ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
@@ -152,6 +151,7 @@ def buscar():
         stock = 0; u_ubi = "---"; f_url = None; col_found = None; u_fecha = ""; final_id = ""; final_nombre = ""
         
         for col in ["materiales", "holders"]:
+            # Búsqueda simultánea por ID y por NOMBRE
             docs_id = db.collection(col).where("item", "==", query).stream()
             docs_nom = db.collection(col).where("nombre", "==", query).stream()
             todos_los_docs = list(docs_id) + list(docs_nom)
@@ -173,6 +173,7 @@ def buscar():
             c1.metric("STOCK TOTAL / 총 재고", stock)
             c2.metric("UBICACIÓN / 위치", u_ubi)
             
+            # QR CENTRADO
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={final_id}"
             st.markdown(f'''
                 <div style="text-align: center; margin-top: 15px;">
@@ -187,7 +188,7 @@ def buscar():
             if f_url:
                 try:
                     st.markdown('<div style="text-align: center; margin-top: 20px;">', unsafe_allow_html=True)
-                    st.image(f_url, caption=f"REFERENCIA / 참조: {final_id}", use_container_width=True)
+                    st.image(f_url, caption=f"REFERENCIA / 참조: {final_id}")
                     st.markdown('</div>', unsafe_allow_html=True)
                 except:
                     st.warning("Imagen no disponible / 사진을 표시할 수 없습니다")
@@ -207,7 +208,7 @@ def admin():
         col_db = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"], format_func=lambda x: x.upper())
         c_del = st.text_input("ID ESPECÍFICO / 특정 ID").upper()
         st.markdown('<div class="warning-box">', unsafe_allow_html=True)
-        st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER / 이 작업은 취소할 수 없습니다")
+        st.warning("⚠️ ESTA ACCIÓN NO SE PUEDE DESHACER")
         seguro = st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다")
         if seguro:
             if st.button("🔴 CONFIRMAR ELIMINACIÓN / 삭제 확인"):
