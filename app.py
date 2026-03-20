@@ -30,7 +30,6 @@ db = firestore.client()
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def convertir_link_drive(url):
-    """Transforma links de Drive en visualización directa."""
     if not url or url == "NO FOTO": return None
     if 'drive.google.com' in url:
         match = re.search(r'(?:id=|d/)([-\w]{25,})', url)
@@ -62,56 +61,21 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    
-    /* Etiquetas Amarillas */
     div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { 
         color: yellow !important; font-size: 16px !important; 
     }
-
-    /* Inputs resaltados */
     .stTextInput>div>div>input { 
         text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; 
     }
-    
-    /* Métricas Cian Mate */
-    div[data-testid="stMetricValue"] { 
-        font-size: 45px !important; color: #00cccc !important; text-align: center !important; 
-    }
-    div[data-testid="stMetricLabel"] { 
-        font-size: 18px !important; color: white !important; text-align: center !important; 
-    }
-    div[data-testid="stMetric"] { 
-        background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; 
-    }
-    
-    /* Centrado de QR y Contenedores */
-    .center-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        width: 100%;
-        margin: auto;
-    }
-    
-    .qr-card {
-        background-color: white;
-        padding: 15px;
-        border-radius: 10px;
-        display: inline-block;
-        margin: 20px auto;
-        text-align: center;
-    }
-
-    div[data-testid="stImage"] {
-        display: flex;
-        justify-content: center;
-    }
+    div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
+    div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
+    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; margin: auto; }
+    .qr-card { background-color: white; padding: 15px; border-radius: 10px; display: inline-block; margin: 20px auto; text-align: center; }
+    div[data-testid="stImage"] { display: flex; justify-content: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- INICIALIZACIÓN DE SESIÓN ---
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
@@ -133,16 +97,16 @@ def login():
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"SESIÓN: {st.session_state.user}")
+    st.info(f"SESIÓN / 세션: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
@@ -157,14 +121,13 @@ def formulario():
             res = decodificar_qr(cam)
             if res: st.session_state.scanned_id = res
             
-    cod = st.text_input("ID / CÓDIGO", value=st.session_state.scanned_id).upper().strip()
+    cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
     
-    # Cálculo de stock para validación de salida
     stock_calc = 0
     if cod:
         docs = db.collection(cat).where("item", "==", cod).stream()
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
-        st.write(f"📊 STOCK EN SISTEMA: **{stock_calc}**")
+        st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{stock_calc}**")
 
     col_c1, col_c2 = st.columns(2)
     cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
@@ -173,14 +136,13 @@ def formulario():
     solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip() if acc == "SALIDA" else ""
     ubi = st.text_input("UBICACIÓN / 위치").upper() if acc == "ENTRADA" else "SALIDA"
     
-    # --- CANDADOS DE SEGURIDAD ---
     bloqueado = False
     if cant1 != cant2:
         st.error("CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
         bloqueado = True
     if acc == "SALIDA":
         if cant1 > stock_calc:
-            st.error(f"STOCK INSUFICIENTE (DISPONIBLE: {stock_calc}) / 재고 부족")
+            st.error(f"STOCK INSUFICIENTE / 재고 부족 (MAX: {stock_calc})")
             bloqueado = True
         if not solicitante:
             st.warning("INGRESE NOMBRE DE SOLICITANTE / 신청자 이름을 입력하세요")
@@ -212,15 +174,20 @@ def buscar():
                     resultados.append(data)
         
         if resultados:
-            opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
-            seleccion = st.selectbox("SELECCIONA / 선택:", list(opciones.keys()))
-            item = opciones[seleccion]
+            # --- LÓGICA DEL "PERRO" (SELECTBOX CONDICIONAL) ---
+            if len(resultados) > 1:
+                opciones = {f"{r.get('nombre')} [{r.get('item')}]": r for r in resultados}
+                seleccion = st.selectbox("VARIOS ENCONTRADOS / 여러 개 발견됨:", list(opciones.keys()))
+                item = opciones[seleccion]
+            else:
+                item = resultados[0] # Solo hay uno, se elige directo sin barra desplegable
+            
             id_f, col_f = item.get('item'), item['categoria_db']
             
-            # --- TÍTULO ROJO DINÁMICO (TU BÚSQUEDA) ---
+            # --- TÍTULO ROJO DINÁMICO (TEXTO VERDE) ---
             st.markdown(f"<h2>{query}</h2>", unsafe_allow_html=True)
             
-            # Cálculo de inventario neto (suma entradas y resta salidas)
+            # Cálculo de inventario neto
             docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
             total_neto = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
             
@@ -241,7 +208,7 @@ def buscar():
             ''', unsafe_allow_html=True)
             
             foto = convertir_link_drive(item.get('foto_url', ''))
-            if foto: st.image(foto, width=450, caption=f"REFERENCIA: {item.get('nombre')}")
+            if foto: st.image(foto, width=450, caption=f"REF: {item.get('nombre')}")
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
