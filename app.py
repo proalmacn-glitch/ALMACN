@@ -107,12 +107,11 @@ def login():
             st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
     st.divider()
     c_inv1, c_inv2 = st.columns(2)
-    if c_inv1.button("SALIDA MAT INVITADO / 자재 출고 (게스트)"): 
+    if c_inv1.button("SALIDA MAT INVITADO / 자재 출고"): 
         st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
-    if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고 (게스트)"): 
+    if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고"): 
         st.session_state.user="INVITADO"; ir("SALIDA", "holders")
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
     st.title("ALMACÉN / 창고")
@@ -128,7 +127,6 @@ def menu():
         if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    # Los usuarios ACTIVOS ahora también pueden entrar al Panel Control con restricciones
     if st.session_state.user != "INVITADO" and st.button("PANEL CONTROL / 제어판"): 
         st.session_state.page = 'admin'; st.rerun()
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
@@ -201,82 +199,88 @@ def buscar():
 
 def admin():
     st.title("PANEL CONTROL / 제어판")
-    
-    # Definición de pestañas según rol / 역할에 따른 탭 정의
     if st.session_state.user == "YAKO":
         tabs = st.tabs(["BORRAR STOCK / 삭제", "EXCEL REPORTE / 엑셀", "CARGA MASIVA / 로드", "USUARIOS / 사용자", "MI CUENTA / 내 계정"])
     else:
-        # Los usuarios ACTIVOS solo ven Carga Masiva y Excel / 활성 사용자는 로드 및 엑셀만 볼 수 있음
         tabs = st.tabs(["EXCEL REPORTE / 엑셀", "CARGA MASIVA / 로드"])
 
-    # Lógica para YAKO (Todas las funciones)
     if st.session_state.user == "YAKO":
-        with tabs[0]: # BORRAR
+        with tabs[0]:
             st.subheader("BORRADO / 삭제")
-            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"], key="admin_del_cat")
+            cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"], key="admin_del_cat")
             del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제)").upper()
-            if st.checkbox("Confirmar Borrado / 확인"):
-                if st.button("🔴 EJECUTAR / 실행"):
+            if st.checkbox("Confirmar Borrado"):
+                if st.button("🔴 EJECUTAR"):
                     ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                     for d in ds: db.collection(cdb).document(d.id).delete()
-                    st.success("BORRADO COMPLETADO / 완료"); st.rerun()
-        with tabs[1]: # EXCEL
-            mostrar_tab_excel()
-        with tabs[2]: # CARGA
-            mostrar_tab_carga()
-        with tabs[3]: # USUARIOS
-            st.subheader("GESTIÓN DE ACCESOS / 관리")
+                    st.success("BORRADO COMPLETADO"); st.rerun()
+        with tabs[1]: mostrar_tab_excel()
+        with tabs[2]: mostrar_tab_carga()
+        with tabs[3]:
+            st.subheader("GESTIÓN DE ACCESOS")
             uds = db.collection("USUARIOS").stream()
             for u in uds:
                 ud = u.to_dict()
                 with st.container():
                     st.markdown(f'<div class="user-card">ID: {u.id} | ESTADO: {ud.get("estado")}</div>', unsafe_allow_html=True)
                     c1, c2 = st.columns(2)
-                    if c1.button("ACTIVAR / 활성화", key=f"a_{u.id}"): 
+                    if c1.button("ACTIVAR", key=f"a_{u.id}"): 
                         db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
-                    if c2.button("BORRAR / 삭제", key=f"d_{u.id}"): 
+                    if c2.button("BORRAR", key=f"d_{u.id}"): 
                         db.collection("USUARIOS").document(u.id).delete(); st.rerun()
-        with tabs[4]: # MI CUENTA
-            mostrar_tab_cuenta()
+        with tabs[4]: mostrar_tab_cuenta()
     else:
-        # Lógica para usuarios ACTIVOS (Solo 2 pestañas)
         with tabs[0]: mostrar_tab_excel()
         with tabs[1]: mostrar_tab_carga()
 
-    if st.button("VOLVER AL MENÚ / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 def mostrar_tab_excel():
-    ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"], key="excel_cat")
-    if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
+    ce = st.selectbox("REPORTE", ["materiales", "holders"], key="excel_cat")
+    if st.button("📥 GENERAR EXCEL"):
         data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
         if data:
             df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOL','registrado_por':'USER'})
             csv = df[['FECHA','ID','MOV','UBICACIÓN','SOL','USER']].to_csv(index=False).encode('utf-8-sig')
-            st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+            st.download_button("Descargar", csv, f"Reporte_{ce}.csv", "text/csv")
 
 def mostrar_tab_carga():
-    dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"], key="carga_cat")
-    arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
+    dest = st.selectbox("DESTINO", ["materiales", "holders"], key="carga_cat")
+    arch = st.file_uploader("Subir .xlsx", type=['xlsx'])
     if arch and st.button("🚀 CARGAR / 로드"):
-        df_in = pd.read_excel(arch)
-        for _, f in df_in.iterrows():
-            db.collection(dest).add({
-                "nombre":str(f['NOMBRE']).upper(),"item":str(f['ID']).upper(),"cantidad":int(f['CANTIDAD']),
-                "ubicacion":str(f['UBICACIÓN']).upper(),"foto_url":str(f.get('FOTO','NO FOTO')),
-                "fecha":datetime.now().strftime("%Y-%m-%d %H:%M"),"registrado_por":st.session_state.user
-            })
-        st.success("CARGA LISTA / 완료")
+        try:
+            # CORRECCIÓN AQUÍ: engine='openpyxl' y limpieza de datos
+            df_in = pd.read_excel(arch, engine='openpyxl')
+            df_in = df_in.dropna(how='all') # Elimina filas vacías
+            
+            for _, f in df_in.iterrows():
+                # Validación de columnas básicas
+                item_id = str(f['ID']).upper().strip()
+                item_name = str(f['NOMBRE']).upper().strip()
+                
+                db.collection(dest).add({
+                    "nombre": item_name,
+                    "item": item_id,
+                    "cantidad": int(f['CANTIDAD']),
+                    "ubicacion": str(f['UBICACIÓN']).upper().strip(),
+                    "foto_url": str(f.get('FOTO', 'NO FOTO')),
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "registrado_por": st.session_state.user
+                })
+            st.success("✅ CARGA EXITOSA / 로드 완료")
+        except Exception as e:
+            st.error(f"Error al cargar Excel: {e}")
 
 def mostrar_tab_cuenta():
-    new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
-    new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
-    if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
+    new_u = st.text_input("NUEVO USUARIO", value=st.session_state.user).upper().strip()
+    new_p = st.text_input("NUEVA CLAVE", type="password")
+    if st.button("ACTUALIZAR DATOS"):
         doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
         if doc_ref.exists:
             old_data = doc_ref.to_dict()
             db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
             if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
-            st.success("DATOS ACTUALIZADOS / 완료"); st.session_state.user = new_u; st.rerun()
+            st.success("DATOS ACTUALIZADOS"); st.session_state.user = new_u; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
