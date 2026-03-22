@@ -132,21 +132,7 @@ def menu():
     st.title("ALMACÉN / 창고")
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
-    st.subheader("MATERIALES / 자재")
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
-    with c2:
-        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
-    
-    st.subheader("HOLDERS / 홀더")
-    c3, c4 = st.columns(2)
-    with c3:
-        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
-    with c4:
-        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
-    
-    st.divider()
+    # --- SECCIÓN SALIDA RÁPIDA (AHORA EN LA PARTE PRINCIPAL) ---
     st.markdown("### SALIDA RÁPIDA / 빠른 출고")
     c5, c6 = st.columns(2)
     with c5:
@@ -155,6 +141,23 @@ def menu():
         if st.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
+    
+    st.divider()
+
+    # --- ENTRADAS Y SALIDAS DETALLADAS ---
+    st.subheader("MATERIALES / 자재")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
+    with c2:
+        if st.button("SALIDA MAT / 출고", key="sm_det"): ir("SALIDA", "materiales")
+    
+    st.subheader("HOLDERS / 홀더")
+    c3, c4 = st.columns(2)
+    with c3:
+        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
+    with c4:
+        if st.button("SALIDA HOL / 출고", key="sh_det"): ir("SALIDA", "holders")
     
     st.divider()
     if st.button("⚙️ PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
@@ -188,7 +191,7 @@ def buscar():
             docs_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
             
-            # NOTIFICACIÓN STOCK BAJO (5 o menos)
+            # ALERTA STOCK BAJO (5 o menos)
             if tot <= 5:
                 st.warning(f"⚠️ STOCK BAJO: Quedan {tot} unidades / 재고 부족: {tot}개 남음")
             
@@ -197,7 +200,10 @@ def buscar():
             c2.metric("UBICACIÓN / 위치", item.get('ubicacion', '---'))
             
             st.divider()
+            
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
+            
+            # QR IZQUIERDA
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
             st.markdown(f'''
                 <div class="qr-left">
@@ -206,6 +212,7 @@ def buscar():
                 </div>
             ''', unsafe_allow_html=True)
             
+            # IMAGEN DERECHA
             foto_url = obtener_url_final(item.get('foto_url', ''))
             if foto_url:
                 st.markdown(f'''
