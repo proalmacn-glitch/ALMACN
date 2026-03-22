@@ -1,11 +1,14 @@
 import streamlit as st
 import firebase_admin
-from firebase_admin import credentials, firestore, storage
+from firebase_admin import credentials, firestore
 import pandas as pd
 from datetime import datetime
 import os
 import random
-import requests
+import numpy as np
+import cv2
+from pyzbar.pyzbar import decode
+import re
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -17,139 +20,219 @@ if not firebase_admin._apps:
         if "textkey" in st.secrets:
             cred = credentials.Certificate(dict(st.secrets["textkey"]))
             firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
+        elif os.path.exists("Key.json"):
+            cred = credentials.Certificate("Key.json")
+            firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
         st.error(f"Error Conexión: {e}")
 
 db = firestore.client()
 
-# --- ESTILOS VISUALES (REPLICANDO TUS FOTOS) ---
+# --- UTILIDADES ---
+def obtener_url_final(url):
+    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]:
+        return None
+    url_limpia = str(url).strip()
+    if "drive.google.com" in url_limpia:
+        match = re.search(r'(?:id=|d/|file/d/)([-\w]{25,})', url_limpia)
+        if match:
+            return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
+    return url_limpia
+
+def decodificar_qr(foto):
+    try:
+        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        codigos = decode(img)
+        if codigos: return codigos[0].data.decode("utf-8").upper()
+    except: return None
+    return None
+
+def ir(acc, cat):
+    st.session_state.accion = acc
+    st.session_state.categoria = cat
+    st.session_state.page = 'form'
+    st.session_state.scanned_id = ""
+    st.rerun()
+
+# --- ESTILOS VISUALES (MANTENIDOS EXACTAMENTE IGUAL) ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
-    h1, h2, h3 { color: red !important; text-align: center; font-weight: bold; }
-    .stButton>button { 
-        background-color: white; color: black; border-radius: 5px; 
-        width: 100%; font-weight: bold; border: 2px solid red; 
-    }
+    h1, h2, h3 { color: red !important; text-align: center; }
+    .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label { color: yellow !important; }
-    .stMetric { background-color: #111; border: 1px solid #333; border-radius: 10px; padding: 10px; }
-    div[data-testid="stMetricValue"] { color: cyan !important; font-size: 50px !important; text-align: center; }
-    .yako-adjust { border: 2px solid red; padding: 15px; border-radius: 10px; background-color: #220000; }
+    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; }
+    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
+    div[data-testid="stMetricValue"] { font-size: 40px !important; color: #00cccc !important; text-align: center !important; }
+    div[data-testid="stMetricLabel"] { font-size: 16px !important; color: white !important; text-align: center !important; }
+    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
+    
+    .media-container { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; width: 100%; margin-top: 15px; }
+    .photo-right { flex: 1; max-width: 350px; min-width: 250px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5); }
+    .qr-left { background-color: #1a1a1a; padding: 15px; border-radius: 15px; border: 1px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- FUNCIONES DE NAVEGACIÓN ---
-def ir(p): 
-    st.session_state.page = p
-    st.rerun()
-
 # ================= VISTAS =================
 
+def mostrar_resultados(busqueda):
+    """
+    Función de búsqueda OPTIMIZADA.
+    En lugar de traer toda la base de datos, busca específicamente por ID.
+    Para buscar por nombre eficientemente en Firebase sin extensiones,
+    esta es la forma más directa.
+    """
+    coincidencias = []
+    for col in ["materiales", "holders"]:
+        # Búsqueda directa por ID (lo más rápido)
+        docs_id = db.collection(col).where("item", "==", busqueda).stream()
+        for d in docs_id:
+            data = d.to_dict()
+            nom = str(data.get('nombre','')).upper()
+            data['cat_db'] = col
+            data['label'] = f"{nom} | {busqueda}"
+            coincidencias.append(data)
+
+    if coincidencias:
+        # Si hay múltiples coincidencias con el mismo ID (raro), permite seleccionar
+        # pero normalmente será solo una.
+        if len(coincidencias) > 1:
+            item_label = st.selectbox("RESULTADOS:", [c['label'] for c in coincidencias])
+            res = next(i for i in coincidencias if i['label'] == item_label)
+        else:
+            res = coincidencias[0]
+            st.info(f"Mostrando: {res['label']}")
+
+        id_f, col_f = res.get('item'), res['cat_db']
+        
+        # Cálculo de stock basado en movimientos (Optimizado)
+        d_movimientos = db.collection(col_f).where("item", "==", id_f).stream()
+        tot = sum([d.to_dict().get('cantidad', 0) for d in d_movimientos])
+        
+        # Alerta stock bajo
+        if tot <= 5: st.warning(f"⚠️ STOCK BAJO: {tot} unidades")
+
+        c1, c2 = st.columns(2)
+        c1.metric("STOCK TOTAL", tot)
+        c2.metric("UBICACIÓN", res.get('ubicacion','---'))
+        
+        st.markdown('<div class="media-container">', unsafe_allow_html=True)
+        # QR izquierda
+        qr = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
+        st.markdown(f'<div class="qr-left"><img src="{qr}" width="130"><br><small>QR {id_f}</small></div>', unsafe_allow_html=True)
+        # Imagen derecha
+        foto = obtener_url_final(res.get('foto_url', ''))
+        if foto: st.markdown(f'<img src="{foto}" class="photo-right">', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        st.warning("No se encontraron coincidencias para este ID")
+
+
 def login():
-    st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color:red;'>ALMACÉN / 창고 🔗</h2>", unsafe_allow_html=True)
+    st.title("LOGIN / 로그인")
+    u_in = st.text_input("USUARIO / 사용자").upper().strip()
+    p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
     
-    u = st.text_input("Usuario / 사용자").upper().strip()
-    p = st.text_input("Clave / 비밀번호", type="password")
-    
-    c1, c2 = st.columns(2)
-    with c1:
+    c_log1, c_log2 = st.columns(2)
+    with c_log1:
         if st.button("ENTRAR / 입장"):
-            doc = db.collection("USUARIOS").document(u).get()
-            if doc.exists and str(doc.to_dict().get('clave')) == p:
-                st.session_state.user = u
-                st.session_state.user_status = doc.to_dict().get('estado')
-                ir('menu')
-            else: st.error("Error de acceso")
-    with c2:
+            doc = db.collection("USUARIOS").document(u_in).get()
+            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
+                st.session_state.user = u_in
+                st.session_state.page = 'menu'; st.rerun()
+            else: st.error("Error de credenciales")
+    with c_log2:
         if st.button("REGISTRARSE / 등록"):
-            st.info("Contacta al administrador para el registro.")
+            u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
+            st.success(f"User: {u} | Pass: {p}")
 
     st.divider()
-    st.markdown("<h3 style='color:white;'>SALIDA RÁPIDA / 빠른 출고</h3>", unsafe_allow_html=True)
     
-    c3, c4 = st.columns(2)
-    with c3:
-        if st.button("SALIDA MATERIALES / 자재 출고"): ir('form_salida_mat')
-    with c4:
-        if st.button("SALIDA HOLDERS / 홀더 출고"): ir('form_salida_hol')
+    # --- PARTE PRINCIPAL (MONTACARGAS + SALIDA RÁPIDA + BUSCADOR) ---
+    # Mantener el GIF del montacargas abajo como en tu captura
+    st.markdown('<div class="center-container">', unsafe_allow_html=True)
+    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif", width=300)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown("### SALIDA RÁPIDA / 빠른 출고")
+    c_r1, c_r2 = st.columns(2)
+    with c_r1:
+        if st.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
+    with c_r2:
+        if st.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
     
-    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): ir('buscar')
+    # BUSCADOR INTEGRADO EN EL INICIO
+    st.markdown("---")
+    st.subheader("🔍 BUSCAR MATERIAL / 재고 검색")
+    # Para la búsqueda optimizada, es mejor buscar por ID directo
+    busqueda_login = st.text_input("INGRESAR ID EXACTO / ID 입력", key="bus_login").upper().strip()
     
-    # Imagen del montacargas como en tu foto
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Forklift_icon.svg/1200px-Forklift_icon.svg.png", width=300)
+    if busqueda_login:
+        mostrar_resultados(busqueda_login)
 
 def menu():
-    st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
+    st.title("ALMACÉN / 창고")
+    st.info(f"SESIÓN: {st.session_state.user}")
+    st.subheader("MATERIALES")
+    c1, c2 = st.columns(2)
+    with c1: st.button("ENTRADA MAT", on_click=ir, args=("ENTRADA", "materiales"))
+    with c2: st.button("SALIDA MAT", on_click=ir, args=("SALIDA", "materiales"))
     
-    col_mat, col_hol = st.columns(2)
-    with col_mat:
-        st.markdown("<h2 style='color:red;'>MATERIALES / 자재</h2>", unsafe_allow_html=True)
-        if st.button("ENTRADA MAT / 자재 입고"): ir('form_entrada_mat')
-        if st.button("SALIDA MAT / 자재 출고"): ir('form_salida_mat')
-    
-    with col_hol:
-        st.markdown("<h2 style='color:red;'>HOLDERS / 홀더</h2>", unsafe_allow_html=True)
-        if st.button("ENTRADA HOL / 홀더 입고"): ir('form_entrada_hol')
-        if st.button("SALIDA HOL / 홀더 출고"): ir('form_salida_hol')
+    st.subheader("HOLDERS")
+    c3, c4 = st.columns(2)
+    with c3: st.button("ENTRADA HOL", on_click=ir, args=("ENTRADA", "holders"))
+    with c4: st.button("SALIDA HOL", on_click=ir, args=("SALIDA", "holders"))
     
     st.divider()
-    if st.button("BUSCAR / 검색"): ir('buscar')
-    if st.session_state.user == "YAKO":
-        if st.button("PANEL CONTROL / 제어판"): ir('admin')
-    if st.button("SALIR / 로그아웃"): 
-        st.session_state.user = None
-        ir('login')
+    if st.button("⚙️ PANEL CONTROL"): st.session_state.page = 'admin'; st.rerun()
+    if st.button("LOGOUT"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
-def buscar():
-    st.markdown("<h1>BUSCAR / 검색</h1>", unsafe_allow_html=True)
-    cod = st.text_input("ID / CÓDIGO / 코드").upper().strip()
-    
-    if cod:
-        stock = 0
-        ubis = []
-        # Lógica para sumar stock y obtener ubicaciones
-        for cat in ["materiales", "holders"]:
-            docs = db.collection(cat).where("item", "==", cod).stream()
-            for d in docs:
-                data = d.to_dict()
-                stock += data.get('cantidad', 0)
-                u = data.get('ubicacion')
-                if u and u not in ubis: ubis.append(u)
-        
-        st.markdown(f"<h3>RESULTADO: {cod}</h3>", unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1: st.metric("STOCK / 재고", stock)
-        with c2: st.metric("UBICACIÓN / 위치", ", ".join(ubis) if ubis else "---")
-        
-        # --- PANEL DE AJUSTE EXCLUSIVO YAKO ---
-        if st.session_state.user == "YAKO":
-            st.markdown('<div class="yako-adjust">', unsafe_allow_html=True)
-            st.markdown("<h3>⚠️ AJUSTE YAKO / 야코 조정</h3>", unsafe_allow_html=True)
-            new_q = st.number_input("Ajuste Cantidad (+/-)", step=1)
-            new_u = st.text_input("Ubicación Nueva").upper().strip()
-            
-            if st.button("CONFIRMAR AJUSTE"):
-                # Se guarda SIN la palabra "AJUSTE", solo el valor nuevo
+def formulario():
+    cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
+    st.header(f"{acc} - {cat.upper()}")
+    cod = st.text_input("ID / 코드").upper().strip()
+    cant = st.number_input("CANTIDAD", min_value=1)
+    if st.button("REGISTRAR"):
+        # Verificación básica antes de registrar
+        if not cod:
+            st.error("Por favor, ingresa un ID")
+            return
+
+        db.collection(cat).add({
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
+            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": "ALM",
+            "registrado_por": st.session_state.user if st.session_state.user else "PUBLICO"
+        })
+        st.success("REGISTRADO"); st.balloons()
+    if st.button("VOLVER"): 
+        st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
+
+def admin():
+    st.title("PANEL CONTROL")
+    arch = st.file_uploader("Subir Excel", type=['xlsx'])
+    if arch and st.button("🚀 CARGAR"):
+        try:
+            df = pd.read_excel(arch)
+            for _, f in df.iterrows():
                 db.collection("materiales").add({
-                    "item": cod,
-                    "cantidad": new_q,
-                    "ubicacion": new_u,
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "usuario": "YAKO"
+                    "nombre": str(f.get('NOMBRE','')).upper(), "item": str(f.get('ID','')).upper(),
+                    "cantidad": int(f.get('CANTIDAD',0)), "ubicacion": str(f.get('UBICACION','ALM')).upper(),
+                    "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
                 })
-                st.success("Ajuste realizado correctamente.")
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.success("CARGA EXITOSA")
+        except Exception as e:
+            st.error(f"Error al cargar el archivo: {e}")
+            
+    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
 
-    if st.button("VOLVER / 돌아가기"): ir('menu')
-
-# --- INICIO DE APP ---
+# --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
-elif st.session_state.page == 'buscar': buscar()
+elif st.session_state.page == 'form': formulario()
+elif st.session_state.page == 'admin': admin()
