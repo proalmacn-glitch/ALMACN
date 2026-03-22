@@ -185,11 +185,22 @@ def buscar():
             tot = sum([d.to_dict().get('cantidad', 0) for d in d_s])
             c1, c2 = st.columns(2); c1.metric("STOCK ACTUAL / 재고", max(0, tot)); c2.metric("UBICACIÓN / 위치", u_real)
             st.divider()
+            
+            # --- PROTECCIÓN PARA IMÁGENES / 이미지 보호 ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-            st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
-            f = convertir_link_drive(item.get('foto_url', ''))
-            if f: st.image(f, width=450); st.markdown('</div>', unsafe_allow_html=True)
+            try:
+                qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
+                st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
+            except:
+                st.warning("QR no disponible / QR을 사용할 수 없습니다.")
+                
+            try:
+                f = convertir_link_drive(item.get('foto_url', ''))
+                if f: st.image(f, width=450)
+            except:
+                st.warning("Foto no disponible / 사진을 사용할 수 없습니다.")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
 def admin():
@@ -232,6 +243,7 @@ def mostrar_tab_excel():
     if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
         data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
         if data:
+            # TÍTULOS BILINGÜES EN EXCEL / 엑셀의 이중 언어 제목
             df = pd.DataFrame(data).rename(columns={
                 'fecha': 'FECHA / 날짜',
                 'item': 'ID / 아이디',
@@ -249,18 +261,17 @@ def mostrar_tab_carga():
     if arch and st.button("🚀 CARGAR / 로드"):
         try:
             df_in = pd.read_excel(arch, engine='openpyxl')
-            # Normalizar nombres de columnas (quita espacios y pone en mayúsculas)
             df_in.columns = [str(c).strip().upper() for c in df_in.columns]
             
-            # Buscar columna ubicación con o sin acento
-            col_ubi = 'UBICACIÓN' if 'UBICACIÓN' in df_in.columns else ('UBICACION' if 'UBICACION' in df_in.columns else None)
-            
+            # DETECCIÓN FLEXIBLE DE COLUMNA UBICACIÓN
+            ubi_col = next((c for c in df_in.columns if "UBIC" in c), None)
+
             for _, f in df_in.iterrows():
                 db.collection(dest).add({
                     "nombre": str(f['NOMBRE']).upper(),
                     "item": str(f['ID']).upper(),
                     "cantidad": int(f['CANTIDAD']),
-                    "ubicacion": str(f[col_ubi]).upper() if col_ubi else "SIN UBICACIÓN",
+                    "ubicacion": str(f[ubi_col]).upper() if ubi_col else "SIN UBICACIÓN",
                     "foto_url": str(f.get('FOTO', 'NO FOTO')),
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "registrado_por": st.session_state.user
@@ -270,19 +281,20 @@ def mostrar_tab_carga():
             st.error(f"Error al cargar Excel: {e}")
 
 def mostrar_tab_cuenta():
-    st.subheader("⚙️ EDITAR MIS CREDENCIALES")
-    new_u = st.text_input("NUEVO USUARIO", value=st.session_state.user).upper().strip()
-    new_p = st.text_input("NUEVA CLAVE", type="password")
-    if st.button("ACTUALIZAR DATOS"):
+    st.subheader("⚙️ EDITAR MIS CREDENCIALES / 내 계정 편집")
+    new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
+    new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
+    if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
         doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
         if doc_ref.exists:
             old_data = doc_ref.to_dict()
             db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
             if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
-            st.success("DATOS ACTUALIZADOS"); st.session_state.user = new_u; st.rerun()
+            st.success("DATOS ACTUALIZADOS / 완료"); st.session_state.user = new_u; st.rerun()
 
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'admin': admin()
+    
