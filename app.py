@@ -30,7 +30,7 @@ db = firestore.client()
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
-    """Limpia el enlace para asegurar que Streamlit lo muestre correctamente."""
+    """Limpia y prepara el enlace de la imagen (ImgBB o Google Drive)."""
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]: 
         return None
     url_limpia = str(url).strip()
@@ -63,42 +63,12 @@ st.markdown("""
     h1, h2, h3 { color: red !important; text-align: center; }
     .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; }
+    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label { color: yellow !important; }
     .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
-    
-    /* CONTENEDOR PARA QR IZQ | IMAGEN DER (CUADRO VERDE) */
-    .media-container {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: center;
-        align-items: center;
-        gap: 30px;
-        width: 100%;
-        margin-top: 20px;
-    }
-    .photo-right {
-        flex: 1;
-        max-width: 450px;
-        min-width: 280px;
-        border-radius: 15px;
-        border: 3px solid red;
-        box-shadow: 0px 4px 20px rgba(255, 0, 0, 0.6);
-    }
-    .qr-left-box {
-        background-color: #1a1a1a;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #333;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-    }
-    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -112,21 +82,13 @@ def login():
     st.title("LOGIN / 로그인")
     u_in = st.text_input("USUARIO / 사용자").upper().strip()
     p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("ENTRAR / 입장"):
-            doc = db.collection("USUARIOS").document(u_in).get()
-            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
-                st.session_state.user = u_in
-                st.session_state.page = 'menu'; st.rerun()
-            else: st.error("Error de credenciales / 자격 증명 오류")
-    with col2:
-        if st.button("REGISTRARSE / 등록"):
-            u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
-            st.success(f"User: {u} | Pass: {p}")
+    if st.button("ENTRAR / 입장"):
+        doc = db.collection("USUARIOS").document(u_in).get()
+        if doc.exists and str(doc.to_dict().get('clave')) == p_in:
+            st.session_state.user = u_in
+            st.session_state.page = 'menu'; st.rerun()
+        else: st.error("Error de credenciales / 자격 증명 오류")
     st.divider()
-    # GIF DEL MONTACARGAS RESTAURADO
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -134,32 +96,27 @@ def login():
 def menu():
     st.title("ALMACÉN / 창고")
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
-    
-    # BOTONES DE ENTRADA Y SALIDA RESTAURADOS
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
-    
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     if st.button("⚙️ PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-    if st.button("SALIR / 로그아웃"): 
-        st.session_state.user = None
-        st.session_state.page = 'login'
-        st.rerun()
+    if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
-    busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
+    busqueda = st.text_input("ESCRIBE NOMBRE O ID / 이름 o ID 입력").upper().strip()
     
     if busqueda:
         coincidencias = []
+        # Buscar en materiales y holders
         for col in ["materiales", "holders"]:
             docs = db.collection(col).stream()
             for d in docs:
@@ -172,14 +129,17 @@ def buscar():
                     coincidencias.append(data)
         
         if coincidencias:
+            # BARRA DESPLEGABLE PARA ELEGIR COINCIDENCIA
             opciones = [c['label'] for c in coincidencias]
-            seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
-            item = next(c for c in coincidencias if c['label'] == seleccion)
+            seleccion = st.selectbox("COINCIDENCIAS / 검색 결과:", opciones)
             
+            # Obtener el item elegido de la lista
+            item = next(c for c in coincidencias if c['label'] == seleccion)
             id_f, col_f = item.get('item'), item['cat_db']
+            
             st.markdown(f"<h2>{item.get('nombre')}</h2>", unsafe_allow_html=True)
             
-            # Cálculo de Stock Real
+            # Cálculo de Stock Real (Suma de movimientos)
             docs_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
             
@@ -189,29 +149,16 @@ def buscar():
             
             st.divider()
             
-            # --- DISEÑO: QR IZQUIERDA | IMAGEN DERECHA (CUADRO VERDE) ---
-            st.markdown('<div class="media-container">', unsafe_allow_html=True)
-            
-            # QR (IZQUIERDA) - Invertido (Blanco sobre Negro)
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
-            st.markdown(f'''
-                <div class="qr-left-box">
-                    <img src="{qr_url}" width="150">
-                    <div style="margin-top:5px; font-size:12px; color:gray;">QR {id_f}</div>
-                </div>
-            ''', unsafe_allow_html=True)
-            
-            # FOTO (DERECHA - CUADRO VERDE)
-            foto_url = obtener_url_final(item.get('foto_url', ''))
-            if foto_url:
-                st.markdown(f'''
-                    <div class="photo-right">
-                        <img src="{foto_url}" style="width:100%; border-radius:12px;">
-                    </div>
-                ''', unsafe_allow_html=True)
+            # --- CENTRADO TOTAL ---
+            st.markdown('<div class="center-container">', unsafe_allow_html=True)
+            # QR
+            st.image(f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}", width=150)
+            # FOTO CON TRUCO HTML
+            url_img = obtener_url_final(item.get('foto_url', ''))
+            if url_img:
+                st.markdown(f'<div style="margin-top:20px;"><img src="{url_img}" style="width:100%; max-width:400px; border-radius:15px; border:3px solid red; box-shadow: 0px 4px 15px rgba(255,0,0,0.5);"></div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="photo-right" style="text-align:center; padding:20px;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
-            
+                st.info("Sin foto disponible / 사진 없음")
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.warning("No se encontraron resultados / 결과 없음")
@@ -263,3 +210,4 @@ elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'admin': admin()
+
