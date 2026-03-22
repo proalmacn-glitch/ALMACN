@@ -59,11 +59,11 @@ def ir(acc, cat):
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
-    h1, h2, h3 { color: red !important; text-align: center; font-weight: bold; }
-    .stButton>button { background-color: white; color: black; border-radius: 2px; width: 100%; font-weight: bold; border: 2px solid red; height: 45px;}
+    h1, h2, h3 { color: red !important; text-align: center; }
+    .stButton>button { background-color: white; color: black; border-radius: 5px; width: 100%; font-weight: bold; border: 2px solid red; }
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; font-weight: bold; }
-    .stTextInput>div>div>input { text-align: center; background-color: #262730; color: cyan !important; font-size: 20px; font-weight: bold; }
+    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; }
+    .stTextInput>div>div>input { text-align: center; background-color: #111; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
@@ -107,11 +107,13 @@ if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 # ================= VISTAS / 보기 =================
 
 def login():
+    # Diseño de la primera imagen: Login, luego Salida Rápida, luego GIF
     st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
-    st.markdown("<h3>ALMACÉN / 창고 🔗</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:red;'>ALMACÉN / 창고 🔗</h3>", unsafe_allow_html=True)
     
-    u_in = st.text_input("USUARIO / 사용자").upper().strip()
-    p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
+    u_in = st.text_input("Usuario / 사용자").upper().strip()
+    p_in = st.text_input("Clave / 비밀번호", type="password").strip()
+    
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
@@ -142,6 +144,7 @@ def login():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def menu():
+    # Diseño de la segunda imagen: Columnas arriba, botones a la izquierda abajo
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
@@ -164,6 +167,7 @@ def menu():
         if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
+    # Mismo código original de buscar
     st.header("BUSCAR / 검색")
     busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
     
@@ -225,6 +229,7 @@ def buscar():
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def formulario():
+    # Mismo código original de formulario (con st.balloons incluido)
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.header(f"{cat.upper()} - {acc}")
     with st.expander("📷 CÁMARA QR / QR 카메라"):
@@ -248,9 +253,13 @@ def formulario():
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def admin():
-    st.title("PANEL CONTROL / 제어판")
+    # Diseño de la tercera imagen: Carga Excel, Destino, y botón VOLVER acortado a la izquierda.
+    # Cero funciones de borrado, igual que tu primer código.
+    st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
+    
     arch = st.file_uploader("Subir Excel / 엑셀 업로드", type=['xlsx'])
     dest = st.selectbox("Destino / 대상", ["materiales", "holders"])
+    
     if arch and st.button("🚀 CARGAR / 로드"):
         df = pd.read_excel(arch)
         df.columns = [str(c).strip().upper() for c in df.columns]
@@ -261,7 +270,12 @@ def admin():
                 "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
             })
         st.success("✅ CARGA EXITOSA / 로드 성공")
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+        
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col_v, _ = st.columns([0.3, 0.7])
+    with col_v:
+        if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
