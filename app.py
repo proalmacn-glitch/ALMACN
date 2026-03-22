@@ -10,10 +10,10 @@ import cv2
 from pyzbar.pyzbar import decode
 import re
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
 
-# --- CONEXIÓN FIREBASE ---
+# --- CONEXIÓN FIREBASE / 파이어베이스 연결 ---
 if not firebase_admin._apps:
     try:
         bucket_name = 'almacnn.firebasestorage.app'
@@ -24,13 +24,13 @@ if not firebase_admin._apps:
             cred = credentials.Certificate("Key.json")
             firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
-        st.error(f"Error Conexión: {e}")
+        st.error(f"Error Conexión / 연결 오류: {e}")
 
 db = firestore.client()
 
-# --- UTILIDADES ---
+# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
-    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]:
+    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]: 
         return None
     url_limpia = str(url).strip()
     if "drive.google.com" in url_limpia:
@@ -55,7 +55,7 @@ def ir(acc, cat):
     st.session_state.scanned_id = ""
     st.rerun()
 
-# --- ESTILOS VISUALES ---
+# --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -68,44 +68,60 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 16px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     
-    .media-container { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 20px; width: 100%; margin-top: 15px; }
-    .photo-right { flex: 1; max-width: 350px; min-width: 250px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5); }
-    .qr-left { background-color: #1a1a1a; padding: 15px; border-radius: 15px; border: 1px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    /* CONTENEDOR PRINCIPAL (ZONA VERDE DE TU IMAGEN) */
+    .main-zone {
+        background-color: #050505;
+        padding: 20px;
+        border-radius: 15px;
+        border: 2px solid #222;
+        margin-bottom: 30px;
+    }
+    
+    .media-container {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        width: 100%;
+        margin-top: 15px;
+    }
+    .photo-right {
+        flex: 1;
+        max-width: 350px;
+        min-width: 250px;
+        border-radius: 15px;
+        border: 3px solid red;
+        box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);
+    }
+    .qr-left {
+        background-color: #1a1a1a;
+        padding: 15px;
+        border-radius: 15px;
+        border: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
+if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
-# ================= VISTAS =================
+# ================= VISTAS / 보기 =================
 
 def login():
-    st.title("LOGIN / 로그인")
-    u_in = st.text_input("USUARIO / 사용자").upper().strip()
-    p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
+    st.title("YAKO PRO - INICIO")
     
-    c_log1, c_log2 = st.columns(2)
-    with c_log1:
-        if st.button("ENTRAR / 입장"):
-            doc = db.collection("USUARIOS").document(u_in).get()
-            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
-                st.session_state.user = u_in
-                st.session_state.page = 'menu'; st.rerun()
-            else: st.error("Error de credenciales")
-    with c_log2:
-        if st.button("REGISTRARSE / 등록"):
-            u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
-            st.success(f"User: {u} | Pass: {p}")
-
-    st.divider()
+    # --- INICIO DE LA ZONA PRINCIPAL (CUADRO VERDE) ---
+    st.markdown('<div class="main-zone">', unsafe_allow_html=True)
     
-    # --- PARTE PRINCIPAL (MONTACARGAS + SALIDA RÁPIDA + BUSCADOR) ---
-    st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif", width=300)
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    # 1. SALIDA RÁPIDA
     st.markdown("### SALIDA RÁPIDA / 빠른 출고")
     c_r1, c_r2 = st.columns(2)
     with c_r1:
@@ -113,93 +129,166 @@ def login():
     with c_r2:
         if st.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
     
-    # BUSCADOR INTEGRADO EN EL INICIO
     st.markdown("---")
-    st.subheader("🔍 BUSCAR MATERIAL / 재고 검색")
-    busqueda_login = st.text_input("NOMBRE O ID / ID o 이름", key="bus_login").upper().strip()
+    
+    # 2. BUSCADOR DE STOCK
+    st.subheader("🔍 BUSCAR STOCK / 재고 검색")
+    busqueda_login = st.text_input("NOMBRE O ID / ID o 이름", key="bus_login", placeholder="Ej: Tornillo o T001").upper().strip()
     
     if busqueda_login:
-        mostrar_resultados(busqueda_login)
+        mostrar_resultados_busqueda(busqueda_login)
+        
+    st.markdown('</div>', unsafe_allow_html=True)
+    # --- FIN DE LA ZONA PRINCIPAL ---
+    
+    st.divider()
+    
+    # --- GIF CENTRADO (ABAJO) ---
+    st.markdown('<div class="center-container">', unsafe_allow_html=True)
+    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif", width=250)
+    st.markdown('<small style="color:gray;">YAKO PRO v1.0</small>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Sección de acceso para administrador (opcional, al final)
+    with st.expander("🔐 Acceso Administrador"):
+        u_in = st.text_input("USUARIO").upper().strip()
+        p_in = st.text_input("CLAVE", type="password").strip()
+        if st.button("ENTRAR"):
+            doc = db.collection("USUARIOS").document(u_in).get()
+            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
+                st.session_state.user = u_in
+                st.session_state.page = 'menu'
+                st.rerun()
+            else:
+                st.error("Credenciales incorrectas")
 
-def mostrar_resultados(busqueda):
+def mostrar_resultados_busqueda(busqueda):
     coincidencias = []
+    # Buscar en ambas colecciones
     for col in ["materiales", "holders"]:
         docs = db.collection(col).stream()
         for d in docs:
             data = d.to_dict()
             nom, idx = str(data.get('nombre','')).upper(), str(data.get('item','')).upper()
             if busqueda in nom or busqueda in idx:
-                data['cat_db'] = col; data['label'] = f"{nom} | {idx}"; coincidencias.append(data)
+                data['cat_db'] = col
+                data['label'] = f"{nom} | {idx}"
+                coincidencias.append(data)
     
     if coincidencias:
-        item = st.selectbox("RESULTADOS:", [c['label'] for c in coincidencias])
-        res = next(i for i in coincidencias if i['label'] == item)
+        # Lista desplegable para seleccionar el material exacto
+        item_sel = st.selectbox("MATERIALES ENCONTRADOS:", [c['label'] for c in coincidencias])
+        res = next(i for i in coincidencias if i['label'] == item_sel)
+        
         id_f, col_f = res.get('item'), res['cat_db']
+        st.markdown(f"<h2>{res.get('nombre')}</h2>", unsafe_allow_html=True)
         
-        # Alerta stock bajo
-        d_stock = db.collection(col_f).where("item", "==", id_f).stream()
-        tot = sum([d.to_dict().get('cantidad', 0) for d in d_stock])
-        if tot <= 5: st.warning(f"⚠️ STOCK BAJO: {tot} unidades")
-
+        # Stock Real (Suma de movimientos)
+        docs_stock = db.collection(col_f).where("item", "==", id_f).stream()
+        tot = sum([d.to_dict().get('cantidad', 0) for d in docs_stock])
+        
+        # ALERTA STOCK BAJO (5 o menos)
+        if tot <= 5:
+            st.warning(f"⚠️ STOCK CRÍTICO: Quedan {tot} unidades")
+            
         c1, c2 = st.columns(2)
-        c1.metric("STOCK", tot); c2.metric("UBICACIÓN", res.get('ubicacion','---'))
+        c1.metric("STOCK ACTUAL", tot)
+        c2.metric("UBICACIÓN", res.get('ubicacion', '---'))
         
+        # --- QR e IMAGEN (Lado a Lado) ---
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
-        # QR izquierda
+        
+        # QR Izquierda (Invertido)
         qr = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
-        st.markdown(f'<div class="qr-left"><img src="{qr}" width="130"><br><small>QR {id_f}</small></div>', unsafe_allow_html=True)
-        # Imagen derecha
+        st.markdown(f'''
+            <div class="qr-left">
+                <img src="{qr}" width="130">
+                <div style="font-size:10px; color:gray; margin-top:5px;">QR {id_f}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+        
+        # Imagen Derecha
         foto = obtener_url_final(res.get('foto_url', ''))
-        if foto: st.markdown(f'<img src="{foto}" class="photo-right">', unsafe_allow_html=True)
+        if foto:
+            st.markdown(f'<img src="{foto}" class="photo-right">', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="photo-right" style="text-align:center; padding:20px; color:gray;">Sin foto</div>', unsafe_allow_html=True)
+            
         st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.warning("No hay resultados")
+        st.warning("No se encontraron coincidencias")
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"SESIÓN: {st.session_state.user}")
+    st.info(f"SESIÓN ACTIVA: {st.session_state.user}")
+    
     st.subheader("MATERIALES")
     c1, c2 = st.columns(2)
-    with c1: st.button("ENTRADA MAT", on_click=ir, args=("ENTRADA", "materiales"))
-    with c2: st.button("SALIDA MAT", on_click=ir, args=("SALIDA", "materiales"))
-    
+    with c1:
+        st.button("ENTRADA MAT", on_click=ir, args=("ENTRADA", "materiales"))
+    with c2:
+        st.button("SALIDA MAT", on_click=ir, args=("SALIDA", "materiales"))
+        
     st.subheader("HOLDERS")
     c3, c4 = st.columns(2)
-    with c3: st.button("ENTRADA HOL", on_click=ir, args=("ENTRADA", "holders"))
-    with c4: st.button("SALIDA HOL", on_click=ir, args=("SALIDA", "holders"))
-    
+    with c3:
+        st.button("ENTRADA HOL", on_click=ir, args=("ENTRADA", "holders"))
+    with c4:
+        st.button("SALIDA HOL", on_click=ir, args=("SALIDA", "holders"))
+        
     st.divider()
-    if st.button("⚙️ PANEL CONTROL"): st.session_state.page = 'admin'; st.rerun()
-    if st.button("LOGOUT"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+    if st.button("⚙️ PANEL CONTROL"):
+        st.session_state.page = 'admin'
+        st.rerun()
+    if st.button("LOGOUT / 로그아웃"):
+        st.session_state.user = None
+        st.session_state.page = 'login'
+        st.rerun()
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.header(f"{acc} - {cat.upper()}")
-    cod = st.text_input("ID / 코드").upper().strip()
+    
+    cod = st.text_input("ID / CÓDIGO").upper().strip()
     cant = st.number_input("CANTIDAD", min_value=1)
-    if st.button("REGISTRAR"):
+    
+    if st.button("REGISTRAR MOVIMIENTO"):
         db.collection(cat).add({
-            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
-            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": "ALM",
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "item": cod,
+            "cantidad": cant if acc == "ENTRADA" else -cant,
+            "ubicacion": "ALM",
             "registrado_por": st.session_state.user if st.session_state.user else "PUBLICO"
         })
-        st.success("REGISTRADO"); st.balloons()
-    if st.button("VOLVER"): 
-        st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
+        st.success("MOVIMIENTO REGISTRADO"); st.balloons()
+        
+    if st.button("VOLVER"):
+        st.session_state.page = 'menu' if st.session_state.user else 'login'
+        st.rerun()
 
 def admin():
     st.title("PANEL CONTROL")
-    arch = st.file_uploader("Subir Excel", type=['xlsx'])
-    if arch and st.button("🚀 CARGAR"):
+    arch = st.file_uploader("Subir Excel masivo", type=['xlsx'])
+    if arch and st.button("🚀 CARGAR DATOS"):
         df = pd.read_excel(arch)
+        # Limpieza simple de columnas
+        df.columns = [str(c).strip().upper() for c in df.columns]
         for _, f in df.iterrows():
             db.collection("materiales").add({
-                "nombre": str(f.get('NOMBRE','')).upper(), "item": str(f.get('ID','')).upper(),
-                "cantidad": int(f.get('CANTIDAD',0)), "ubicacion": str(f.get('UBICACION','ALM')).upper(),
-                "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
+                "nombre": str(f.get('NOMBRE','')).upper(),
+                "item": str(f.get('ID','')).upper(),
+                "cantidad": int(f.get('CANTIDAD',0)),
+                "ubicacion": str(f.get('UBICACION','ALM')).upper(),
+                "foto_url": str(f.get('FOTO','')),
+                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
             })
-        st.success("CARGA EXITOSA")
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+        st.success("DATOS CARGADOS CORRECTAMENTE")
+        
+    if st.button("VOLVER AL MENÚ"):
+        st.session_state.page = 'menu'
+        st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
