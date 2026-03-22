@@ -224,13 +224,15 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            nombre_codificado = urllib.parse.quote(nombre_item)
+            # --- MODIFICACIÓN DEL FORMATO DEL QR AQUÍ ---
+            nombre_id_qr = f"{nombre_item}/{id_f}"
+            nombre_codificado = urllib.parse.quote(nombre_id_qr)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
             
             st.markdown(f'''
                 <div class="qr-left">
                     <img src="{qr_url}" width="150">
-                    <div style="margin-top:5px; font-size:12px; color:gray;">QR {id_f}</div>
+                    <div style="margin-top:5px; font-size:12px; color:gray;">QR {nombre_id_qr}</div>
                 </div>
             ''', unsafe_allow_html=True)
             
@@ -264,8 +266,10 @@ def formulario():
     busqueda_form = st.text_input("ID O NOMBRE / 코드 또는 이름", value=st.session_state.scanned_id).upper().strip()
     cod_final = ""
     
-    # --- BUSCADOR Y LÓGICA DE COINCIDENCIAS UNIFICADA (ENTRADA Y SALIDA) ---
     if busqueda_form:
+        # Lógica para extraer solo el ID si se escaneó un QR con formato NOMBRE/ID
+        termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
+        
         coincidencias = []
         seen = set()
         docs = db.collection(cat).stream()
@@ -273,7 +277,8 @@ def formulario():
             data = d.to_dict()
             nom = str(data.get('nombre', '')).upper()
             idx = str(data.get('item', '')).upper()
-            if busqueda_form in nom or busqueda_form in idx:
+            
+            if termino_busqueda in nom or termino_busqueda in idx:
                 if idx not in seen:
                     seen.add(idx)
                     data['label'] = f"{nom} | {idx}"
@@ -292,15 +297,12 @@ def formulario():
             st.warning("⚠️ No encontrado en la base de datos.")
             cod_final = busqueda_form
 
-    # --- CAMPOS UNIFICADOS PARA CANTIDAD ---
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
     
-    # Alerta visual para ambas acciones si no cuadran las cantidades
     if cant != cant_conf and cant_conf > 0:
         st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
 
-    # --- LÓGICA CONDICIONAL: SALIDA VS ENTRADA ---
     if acc == "SALIDA":
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         ubi = "SALIDA"
