@@ -10,10 +10,10 @@ import cv2
 from pyzbar.pyzbar import decode
 import re
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
 
-# --- CONEXIÓN FIREBASE ---
+# --- CONEXIÓN FIREBASE / 파이어베이스 연결 ---
 if not firebase_admin._apps:
     try:
         bucket_name = 'almacnn.firebasestorage.app'
@@ -24,11 +24,11 @@ if not firebase_admin._apps:
             cred = credentials.Certificate("Key.json")
             firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
-        st.error(f"Error Conexión: {e}")
+        st.error(f"Error Conexión / 연결 오류: {e}")
 
 db = firestore.client()
 
-# --- UTILIDADES TÉCNICAS ---
+# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]:
         return None
@@ -48,36 +48,55 @@ def decodificar_qr(foto):
     except: return None
     return None
 
-def ir(acc, cat, page='form'):
+def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
-    st.session_state.page = page
+    st.session_state.page = 'form'
     st.session_state.scanned_id = ""
     st.rerun()
 
-# --- ESTILOS VISUALES PERSONALIZADOS ---
+# --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
     h1, h2, h3 { color: red !important; text-align: center; font-weight: bold; }
-    .stButton>button { 
-        background-color: white; color: black; border-radius: 2px; 
-        width: 100%; font-weight: bold; border: 2px solid red; height: 45px;
-    }
+    .stButton>button { background-color: white; color: black; border-radius: 2px; width: 100%; font-weight: bold; border: 2px solid red; height: 45px;}
     .stButton>button:hover { background-color: red; color: white; }
-    div[data-testid="stTextInput"] label, div[data-testid="stNumberInput"] label, div[data-testid="stSelectbox"] label { 
-        color: yellow !important; font-weight: bold; 
-    }
-    .stTextInput>div>div>input { background-color: #262730; color: cyan !important; font-weight: bold; }
-    
-    /* Métricas de Stock */
+    div[data-testid="stTextInput"] label, div[data-testid="stSelectbox"] label, div[data-testid="stNumberInput"] label { color: yellow !important; font-weight: bold; }
+    .stTextInput>div>div>input { text-align: center; background-color: #262730; color: cyan !important; font-size: 20px; font-weight: bold; }
     div[data-testid="stMetricValue"] { font-size: 45px !important; color: #00cccc !important; text-align: center !important; }
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
+    div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     
-    .media-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-top: 20px; }
-    .photo-right { flex: 1; max-width: 400px; border-radius: 15px; border: 3px solid red; }
-    .qr-left { background-color: #1a1a1a; padding: 15px; border-radius: 15px; border: 1px solid #333; text-align: center; }
-    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; }
+    .media-container {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        width: 100%;
+        margin-top: 20px;
+    }
+    .photo-right {
+        flex: 1;
+        max-width: 400px;
+        min-width: 280px;
+        border-radius: 15px;
+        border: 3px solid red;
+        box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);
+    }
+    .qr-left {
+        background-color: #1a1a1a;
+        padding: 15px;
+        border-radius: 15px;
+        border: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -85,73 +104,64 @@ if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 
-# ================= VISTAS / funciones =================
+# ================= VISTAS / 보기 =================
 
 def login():
-    # Estructura Imagen 1
     st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color:red;'>ALMACÉN / 창고 🔗</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>ALMACÉN / 창고 🔗</h3>", unsafe_allow_html=True)
     
-    u_in = st.text_input("Usuario / 사용자").upper().strip()
-    p_in = st.text_input("Clave / 비밀번호", type="password").strip()
-    
-    c1, c2 = st.columns(2)
-    with c1:
+    u_in = st.text_input("USUARIO / 사용자").upper().strip()
+    p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
+    col1, col2 = st.columns(2)
+    with col1:
         if st.button("ENTRAR / 입장"):
             doc = db.collection("USUARIOS").document(u_in).get()
             if doc.exists and str(doc.to_dict().get('clave')) == p_in:
                 st.session_state.user = u_in
                 st.session_state.page = 'menu'; st.rerun()
-            else: st.error("Error de credenciales")
-    with c2:
+            else: st.error("Error de credenciales / 자격 증명 오류")
+    with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
             st.success(f"User: {u} | Pass: {p}")
+            
+    st.divider()
     
-    st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown("<h2>SALIDA RÁPIDA / 빠른 출고</h2>", unsafe_allow_html=True)
-    
-    cr1, cr2 = st.columns(2)
-    with cr1:
+    c5, c6 = st.columns(2)
+    with c5:
         if st.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
-    with cr2:
+    with c6:
         if st.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
-
+    
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWUmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif", width=350)
+    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
 
 def menu():
-    # Estructura Imagen 2
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
-    col_mat, col_hol = st.columns(2)
-    
-    with col_mat:
-        st.markdown("<h3 style='color:red;'>MATERIALES / 자재</h3>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("<h3>MATERIALES / 자재</h3>", unsafe_allow_html=True)
         if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
         if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
-        
-    with col_hol:
-        st.markdown("<h3 style='color:red;'>HOLDERS / 홀더</h3>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<h3>HOLDERS / 홀더</h3>", unsafe_allow_html=True)
         if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
     
-    st.markdown("<br><hr>", unsafe_allow_html=True)
+    st.divider()
     
-    # Botones inferiores alineados a la izquierda
-    c_btn, _ = st.columns([0.4, 0.6])
-    with c_btn:
+    col_btn, _ = st.columns([0.4, 0.6])
+    with col_btn:
         if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
         if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-        if st.button("SALIR / 로그아웃"): 
-            st.session_state.user = None
-            st.session_state.page = 'login'
-            st.rerun()
+        if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
@@ -181,8 +191,9 @@ def buscar():
             docs_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
             
+            # NOTIFICACIÓN STOCK BAJO (5 o menos)
             if tot <= 5:
-                st.warning(f"⚠️ STOCK BAJO: Quedan {tot} unidades")
+                st.warning(f"⚠️ STOCK BAJO: Quedan {tot} unidades / 재고 부족: {tot}개 남음")
             
             c1, c2 = st.columns(2)
             c1.metric("STOCK ACTUAL / 재고", max(0, tot))
@@ -191,19 +202,31 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
-            st.markdown(f'<div class="qr-left"><img src="{qr_url}" width="150"><br><small>QR {id_f}</small></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <div class="qr-left">
+                    <img src="{qr_url}" width="150">
+                    <div style="margin-top:5px; font-size:12px; color:gray;">QR {id_f}</div>
+                </div>
+            ''', unsafe_allow_html=True)
             
             foto_url = obtener_url_final(item.get('foto_url', ''))
             if foto_url:
-                st.markdown(f'<div class="photo-right"><img src="{foto_url}" style="width:100%; border-radius:15px;"></div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                    <div class="photo-right">
+                        <img src="{foto_url}" style="width:100%; border-radius:15px;">
+                    </div>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            st.warning("No se encontraron resultados / 결과 없음")
 
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.header(f"{cat.upper()} - {acc}")
-    
     with st.expander("📷 CÁMARA QR / QR 카메라"):
         cam = st.camera_input("SCAN")
         if cam:
@@ -228,7 +251,6 @@ def admin():
     st.title("PANEL CONTROL / 제어판")
     arch = st.file_uploader("Subir Excel / 엑셀 업로드", type=['xlsx'])
     dest = st.selectbox("Destino / 대상", ["materiales", "holders"])
-    
     if arch and st.button("🚀 CARGAR / 로드"):
         df = pd.read_excel(arch)
         df.columns = [str(c).strip().upper() for c in df.columns]
@@ -238,11 +260,10 @@ def admin():
                 "cantidad": int(f.get('CANTIDAD',0)), "ubicacion": str(f.get('UBICACION','ALM')).upper(),
                 "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
             })
-        st.success("✅ CARGA EXITOSA")
-        
+        st.success("✅ CARGA EXITOSA / 로드 성공")
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
-# --- NAVEGACIÓN PRINCIPAL ---
+# --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'buscar': buscar()
