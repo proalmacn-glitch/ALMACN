@@ -96,7 +96,6 @@ def login():
             doc = db.collection("USUARIOS").document(u_in).get()
             if doc.exists and str(doc.to_dict().get('clave')) == p_in:
                 st.session_state.user = u_in
-                # VALIDACIÓN DE PRIMER INGRESO
                 if doc.to_dict().get('estado') == "NUEVO":
                     st.session_state.page = 'cambiar_datos'
                 else:
@@ -106,7 +105,6 @@ def login():
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            # SE ASIGNA ESTADO 'NUEVO' AL REGISTRAR
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
             st.success(f"User temporal: {u} | Pass: {p}")
             
@@ -150,7 +148,6 @@ def cambiar_datos():
                         st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
                         return
                 
-                # Guarda los nuevos datos y borra los viejos si cambió el ID de usuario
                 db.collection("USUARIOS").document(nuevo_u).set({
                     "clave": nueva_p, 
                     "estado": "ACTIVO"
@@ -267,6 +264,7 @@ def formulario():
     busqueda_form = st.text_input("ID O NOMBRE / 코드 또는 이름", value=st.session_state.scanned_id).upper().strip()
     cod_final = ""
     
+    # --- BUSCADOR Y LÓGICA DE COINCIDENCIAS UNIFICADA (ENTRADA Y SALIDA) ---
     if busqueda_form:
         coincidencias = []
         seen = set()
@@ -294,21 +292,23 @@ def formulario():
             st.warning("⚠️ No encontrado en la base de datos.")
             cod_final = busqueda_form
 
+    # --- CAMPOS UNIFICADOS PARA CANTIDAD ---
+    cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
+    cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
+    
+    # Alerta visual para ambas acciones si no cuadran las cantidades
+    if cant != cant_conf and cant_conf > 0:
+        st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
+
+    # --- LÓGICA CONDICIONAL: SALIDA VS ENTRADA ---
     if acc == "SALIDA":
-        cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
-        cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         ubi = "SALIDA"
-        
-        if cant != cant_conf and cant_conf > 0:
-            st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
-            
         bloqueado = (cant != cant_conf) or (not solicitante) or (not cod_final)
-    else:
-        cant = st.number_input("CANTIDAD / 수량", min_value=1)
-        ubi = st.text_input("UBICACIÓN / 위치").upper()
+    else: # ENTRADA
+        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         solicitante = ""
-        bloqueado = (not cod_final)
+        bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final)
         
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -337,16 +337,13 @@ def formulario():
 def admin():
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
     
-    # --- LÓGICA DE PRIVILEGIOS DE YAKO ---
     es_yako = (st.session_state.user == "YAKO")
     
     if es_yako:
         t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자"])
     else:
-        # Si no es YAKO, solo ve dos opciones (EXCEL y CARGA MASIVA)
         t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
     
-    # Pestaña Borrar (SOLO YAKO)
     if es_yako:
         with t1:
             st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
@@ -358,7 +355,6 @@ def admin():
                     for d in ds: db.collection(cdb).document(d.id).delete()
                     st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
                 
-    # Pestaña Excel (TODOS LOS QUE ENTREN A ADMIN)
     with t2:
         ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
@@ -369,7 +365,6 @@ def admin():
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
-    # Pestaña Carga Masiva (TODOS LOS QUE ENTREN A ADMIN)
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
@@ -387,7 +382,6 @@ def admin():
                 })
             st.success("CARGA LISTA / 로드 완료")
             
-    # Pestaña Usuarios (SOLO YAKO)
     if es_yako:
         with t4:
             uds = db.collection("USUARIOS").stream()
@@ -395,7 +389,6 @@ def admin():
                 ud = u.to_dict()
                 with st.container():
                     st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
-                    # YAKO no puede borrarse a sí mismo por accidente
                     if u.id != "YAKO":
                         if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
                             db.collection("USUARIOS").document(u.id).delete()
