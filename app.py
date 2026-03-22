@@ -55,7 +55,6 @@ def ir(acc, cat):
     st.rerun()
 
 def animacion_aleatoria():
-    """Solo Globos y Copos de Nieve aleatoriamente."""
     opcion = random.choice(["globos", "nieve"])
     if opcion == "globos": st.balloons()
     else: st.snow()
@@ -112,10 +111,7 @@ def login():
         st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
     if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고 (게스트)"): 
         st.session_state.user="INVITADO"; ir("SALIDA", "holders")
-    
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    
-    # --- GIF RESTAURADO / GIF 복구 ---
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
 def menu():
@@ -150,29 +146,20 @@ def formulario():
         docs = db.collection(cat).where("item", "==", cod).stream()
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
         st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{max(0, stock_calc)}**")
-    
     col_c1, col_c2 = st.columns(2)
     cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant2 = col_c2.number_input("CONFIRMAR / 확인", min_value=0, key="cant2")
     sol = st.text_input("SOLICITANTE / 신청자").upper().strip() if acc == "SALIDA" else ""
-    
     ubi_fija = ""
     if cod:
         d_u = db.collection(cat).where("item", "==", cod).limit(20).stream()
         for d in d_u:
             if d.to_dict().get("ubicacion") != "SALIDA": ubi_fija = d.to_dict().get("ubicacion", ""); break
     ubi = st.text_input("UBICACIÓN / 위치", value=ubi_fija).upper() if acc == "ENTRADA" else "SALIDA"
-    
     bloqueado = cant1 != cant2 or (acc == "SALIDA" and (cant1 > stock_calc or not sol))
     if st.button("REGISTRAR / 등록", disabled=bloqueado):
-        db.collection(cat).add({
-            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod, 
-            "cantidad": cant1 if acc == "ENTRADA" else -cant1, "ubicacion": ubi, 
-            "solicitante": sol, "registrado_por": st.session_state.user
-        })
-        animacion_aleatoria()
-        st.success("✅ ¡ÉXITO! / 성공!")
-        st.session_state.scanned_id = ""
+        db.collection(cat).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod, "cantidad": cant1 if acc == "ENTRADA" else -cant1, "ubicacion": ubi, "solicitante": sol, "registrado_por": st.session_state.user})
+        animacion_aleatoria(); st.success("✅ ¡ÉXITO! / 성공!"); st.session_state.scanned_id = ""
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
@@ -217,39 +204,43 @@ def admin():
             st.subheader("BORRADO / 삭제")
             cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"], key="admin_del_cat")
             del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제)").upper()
-            if st.checkbox("Confirmar Borrado / 확인"):
-                if st.button("🔴 EJECUTAR / 실행"):
+            if st.checkbox("Confirmar Borrado"):
+                if st.button("🔴 EJECUTAR"):
                     ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                     for d in ds: db.collection(cdb).document(d.id).delete()
-                    st.success("BORRADO COMPLETADO / 완료"); st.rerun()
+                    st.success("BORRADO COMPLETADO"); st.rerun()
         with tabs[1]: mostrar_tab_excel()
         with tabs[2]: mostrar_tab_carga()
         with tabs[3]:
-            st.subheader("GESTIÓN DE ACCESOS / 관리")
+            st.subheader("GESTIÓN DE ACCESOS")
             uds = db.collection("USUARIOS").stream()
             for u in uds:
                 ud = u.to_dict()
                 with st.container():
                     st.markdown(f'<div class="user-card">ID: {u.id} | ESTADO: {ud.get("estado")}</div>', unsafe_allow_html=True)
                     c1, c2 = st.columns(2)
-                    if c1.button("ACTIVAR / 활성화", key=f"a_{u.id}"): 
-                        db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
-                    if c2.button("BORRAR / 삭제", key=f"d_{u.id}"): 
-                        db.collection("USUARIOS").document(u.id).delete(); st.rerun()
+                    if c1.button("ACTIVAR", key=f"a_{u.id}"): db.collection("USUARIOS").document(u.id).update({"estado": "ACTIVO"}); st.rerun()
+                    if c2.button("BORRAR", key=f"d_{u.id}"): db.collection("USUARIOS").document(u.id).delete(); st.rerun()
         with tabs[4]: mostrar_tab_cuenta()
     else:
         with tabs[0]: mostrar_tab_excel()
         with tabs[1]: mostrar_tab_carga()
-
-    if st.button("VOLVER AL MENÚ / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
 
 def mostrar_tab_excel():
     ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"], key="excel_cat")
     if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
         data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
         if data:
-            df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOL','registrado_por':'USER'})
-            csv = df[['FECHA','ID','MOV','UBICACIÓN','SOL','USER']].to_csv(index=False).encode('utf-8-sig')
+            df = pd.DataFrame(data).rename(columns={
+                'fecha': 'FECHA / 날짜',
+                'item': 'ID / 아이디',
+                'cantidad': 'MOVIMIENTO / 이동',
+                'ubicacion': 'UBICACIÓN / 위치',
+                'solicitante': 'SOLICITANTE / 신청자',
+                'registrado_por': 'USUARIO / 사용자'
+            })
+            csv = df[['FECHA / 날짜', 'ID / 아이디', 'MOVIMIENTO / 이동', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'USUARIO / 사용자']].to_csv(index=False).encode('utf-8-sig')
             st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
 
 def mostrar_tab_carga():
@@ -258,30 +249,38 @@ def mostrar_tab_carga():
     if arch and st.button("🚀 CARGAR / 로드"):
         try:
             df_in = pd.read_excel(arch, engine='openpyxl')
-            df_in = df_in.dropna(how='all')
+            # Normalizar nombres de columnas (quita espacios y pone en mayúsculas)
+            df_in.columns = [str(c).strip().upper() for c in df_in.columns]
+            
+            # Buscar columna ubicación con o sin acento
+            col_ubi = 'UBICACIÓN' if 'UBICACIÓN' in df_in.columns else ('UBICACION' if 'UBICACION' in df_in.columns else None)
+            
             for _, f in df_in.iterrows():
                 db.collection(dest).add({
-                    "nombre":str(f['NOMBRE']).upper(),"item":str(f['ID']).upper(),"cantidad":int(f['CANTIDAD']),
-                    "ubicacion":str(f['UBICACIÓN']).upper(),"foto_url":str(f.get('FOTO','NO FOTO')),
-                    "fecha":datetime.now().strftime("%Y-%m-%d %H:%M"),"registrado_por":st.session_state.user
+                    "nombre": str(f['NOMBRE']).upper(),
+                    "item": str(f['ID']).upper(),
+                    "cantidad": int(f['CANTIDAD']),
+                    "ubicacion": str(f[col_ubi]).upper() if col_ubi else "SIN UBICACIÓN",
+                    "foto_url": str(f.get('FOTO', 'NO FOTO')),
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "registrado_por": st.session_state.user
                 })
-            st.success("✅ CARGA LISTA / 완료")
+            st.success("✅ CARGA EXITOSA / 로드 완료")
         except Exception as e:
             st.error(f"Error al cargar Excel: {e}")
 
 def mostrar_tab_cuenta():
-    st.subheader("⚙️ EDITAR MIS CREDENCIALES / 내 계정 편집")
-    new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
-    new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
-    if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
+    st.subheader("⚙️ EDITAR MIS CREDENCIALES")
+    new_u = st.text_input("NUEVO USUARIO", value=st.session_state.user).upper().strip()
+    new_p = st.text_input("NUEVA CLAVE", type="password")
+    if st.button("ACTUALIZAR DATOS"):
         doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
         if doc_ref.exists:
             old_data = doc_ref.to_dict()
             db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
             if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
-            st.success("DATOS ACTUALIZADOS / 완료"); st.session_state.user = new_u; st.rerun()
+            st.success("DATOS ACTUALIZADOS"); st.session_state.user = new_u; st.rerun()
 
-# --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
