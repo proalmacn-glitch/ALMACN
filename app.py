@@ -109,11 +109,21 @@ def login():
     st.markdown("<h2>SALIDA RÁPIDA / 빠른 출고</h2>", unsafe_allow_html=True)
     c5, c6 = st.columns(2)
     with c5:
-        if st.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
+        if st.button("SALIDA MATERIALES / 자재 출고"):
+            # ASIGNAMOS INVITADO SI ENTRAN DIRECTO
+            st.session_state.user = "INVITADO"
+            ir("SALIDA", "materiales")
     with c6:
-        if st.button("SALIDA HOLDERS / 홀더 출고"): ir("SALIDA", "holders")
+        if st.button("SALIDA HOLDERS / 홀더 출고"):
+            # ASIGNAMOS INVITADO SI ENTRAN DIRECTO
+            st.session_state.user = "INVITADO"
+            ir("SALIDA", "holders")
     
-    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
+    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
+        # ASIGNAMOS INVITADO SI ENTRAN A BUSCAR DIRECTO
+        if not st.session_state.user:
+            st.session_state.user = "INVITADO"
+        st.session_state.page = 'buscar'; st.rerun()
     
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
@@ -121,7 +131,10 @@ def login():
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
+    
+    # CONTROL PARA QUE NUNCA DIGA 'NONE'
+    usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
+    st.info(f"HOLA / 안녕하세요: {usuario_actual}")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -220,7 +233,6 @@ def formulario():
     busqueda_form = st.text_input("ID O NOMBRE / 코드 또는 이름", value=st.session_state.scanned_id).upper().strip()
     cod_final = ""
     
-    # --- BUSCADOR INTEGRADO EN FORMULARIO ---
     if busqueda_form:
         coincidencias = []
         seen = set()
@@ -248,14 +260,12 @@ def formulario():
             st.warning("⚠️ No encontrado en la base de datos.")
             cod_final = busqueda_form
 
-    # --- CAMPOS DE CANTIDAD Y VALIDACIÓN ---
     if acc == "SALIDA":
         cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
         cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         ubi = "SALIDA"
         
-        # Validación: Mensaje de error si no coinciden las cantidades
         if cant != cant_conf and cant_conf > 0:
             st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
             
@@ -272,20 +282,23 @@ def formulario():
     with col_v:
         if st.button("REGISTRAR / 등록", disabled=bloqueado):
             if cod_final:
+                # Nos aseguramos de mandar INVITADO si está vacío
+                usuario_registro = st.session_state.user if st.session_state.user else "INVITADO"
+                
                 db.collection(cat).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                     "solicitante": solicitante,
-                    "registrado_por": st.session_state.user
+                    "registrado_por": usuario_registro
                 })
                 st.success("✅ REGISTRADO / 등록 완료")
                 st.balloons()
-                st.session_state.scanned_id = "" # Limpia el buscador después de registrar
+                st.session_state.scanned_id = "" 
             else:
                 st.error("Por favor, ingresa el ID.")
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.scanned_id = "" # Limpia el buscador al salir
+            st.session_state.scanned_id = "" 
             st.session_state.page = 'menu'
             st.rerun()
 
