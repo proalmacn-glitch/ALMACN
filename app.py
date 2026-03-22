@@ -180,8 +180,6 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            # --- MODIFICACIÓN DEL QR AQUÍ ---
-            # Se codifica el nombre para que los espacios y caracteres especiales no rompan la URL
             nombre_codificado = urllib.parse.quote(nombre_item)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
             
@@ -215,41 +213,79 @@ def formulario():
         cam = st.camera_input("SCAN")
         if cam:
             res = decodificar_qr(cam)
-            if res: st.session_state.scanned_id = res
+            if res and res != st.session_state.scanned_id:
+                st.session_state.scanned_id = res
+                st.rerun()
             
-    cod = st.text_input("ID / 코드", value=st.session_state.scanned_id).upper().strip()
+    busqueda_form = st.text_input("ID O NOMBRE / 코드 또는 이름", value=st.session_state.scanned_id).upper().strip()
+    cod_final = ""
     
+    # --- BUSCADOR INTEGRADO EN FORMULARIO ---
+    if busqueda_form:
+        coincidencias = []
+        seen = set()
+        docs = db.collection(cat).stream()
+        for d in docs:
+            data = d.to_dict()
+            nom = str(data.get('nombre', '')).upper()
+            idx = str(data.get('item', '')).upper()
+            if busqueda_form in nom or busqueda_form in idx:
+                if idx not in seen:
+                    seen.add(idx)
+                    data['label'] = f"{nom} | {idx}"
+                    coincidencias.append(data)
+        
+        if coincidencias:
+            if len(coincidencias) == 1:
+                cod_final = coincidencias[0]['item']
+                st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
+            else:
+                opciones = [c['label'] for c in coincidencias]
+                seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
+                item_sel = next(c for c in coincidencias if c['label'] == seleccion)
+                cod_final = item_sel['item']
+        else:
+            st.warning("⚠️ No encontrado en la base de datos.")
+            cod_final = busqueda_form
+
+    # --- CAMPOS DE CANTIDAD Y VALIDACIÓN ---
     if acc == "SALIDA":
         cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
         cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         ubi = "SALIDA"
         
-        bloqueado = (cant != cant_conf) or (not solicitante)
+        # Validación: Mensaje de error si no coinciden las cantidades
+        if cant != cant_conf and cant_conf > 0:
+            st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
+            
+        bloqueado = (cant != cant_conf) or (not solicitante) or (not cod_final)
     else:
         cant = st.number_input("CANTIDAD / 수량", min_value=1)
         ubi = st.text_input("UBICACIÓN / 위치").upper()
         solicitante = ""
-        bloqueado = False
+        bloqueado = (not cod_final)
         
     st.markdown("<br>", unsafe_allow_html=True)
     
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
         if st.button("REGISTRAR / 등록", disabled=bloqueado):
-            if cod:
+            if cod_final:
                 db.collection(cat).add({
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                     "solicitante": solicitante,
                     "registrado_por": st.session_state.user
                 })
                 st.success("✅ REGISTRADO / 등록 완료")
                 st.balloons()
+                st.session_state.scanned_id = "" # Limpia el buscador después de registrar
             else:
                 st.error("Por favor, ingresa el ID.")
         
         if st.button("VOLVER / 돌아가기"): 
+            st.session_state.scanned_id = "" # Limpia el buscador al salir
             st.session_state.page = 'menu'
             st.rerun()
 
