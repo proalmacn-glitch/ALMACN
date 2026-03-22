@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 from pyzbar.pyzbar import decode
 import re
+import urllib.parse
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -73,7 +74,6 @@ st.markdown("""
     .qr-left { background-color: #1a1a1a; padding: 15px; border-radius: 15px; border: 1px solid #333; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     
-    /* Agregado para las tarjetas de usuarios del Panel de Control */
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     </style>
     """, unsafe_allow_html=True)
@@ -164,7 +164,8 @@ def buscar():
             item = next(c for c in coincidencias if c['label'] == seleccion)
             
             id_f, col_f = item.get('item'), item['cat_db']
-            st.markdown(f"<h2>{item.get('nombre')}</h2>", unsafe_allow_html=True)
+            nombre_item = item.get('nombre', '')
+            st.markdown(f"<h2>{nombre_item}</h2>", unsafe_allow_html=True)
             
             docs_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
@@ -178,7 +179,12 @@ def buscar():
             
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
+            
+            # --- MODIFICACIÓN DEL QR AQUÍ ---
+            # Se codifica el nombre para que los espacios y caracteres especiales no rompan la URL
+            nombre_codificado = urllib.parse.quote(nombre_item)
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
+            
             st.markdown(f'''
                 <div class="qr-left">
                     <img src="{qr_url}" width="150">
@@ -203,7 +209,8 @@ def buscar():
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
-    st.header(f"{cat.upper()} - {acc}")
+    st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
+    
     with st.expander("📷 CÁMARA QR / QR 카메라"):
         cam = st.camera_input("SCAN")
         if cam:
@@ -211,21 +218,42 @@ def formulario():
             if res: st.session_state.scanned_id = res
             
     cod = st.text_input("ID / 코드", value=st.session_state.scanned_id).upper().strip()
-    cant = st.number_input("CANTIDAD / 수량", min_value=1)
-    ubi = st.text_input("UBICACIÓN / 위치").upper() if acc == "ENTRADA" else "SALIDA"
     
-    if st.button("REGISTRAR / 등록"):
-        db.collection(cat).add({
-            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
-            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
-            "registrado_por": st.session_state.user
-        })
-        st.success("✅ REGISTRADO / 등록 완료"); st.balloons()
+    if acc == "SALIDA":
+        cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
+        cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
+        solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
+        ubi = "SALIDA"
+        
+        bloqueado = (cant != cant_conf) or (not solicitante)
+    else:
+        cant = st.number_input("CANTIDAD / 수량", min_value=1)
+        ubi = st.text_input("UBICACIÓN / 위치").upper()
+        solicitante = ""
+        bloqueado = False
+        
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    col_v, _ = st.columns([0.4, 0.6])
+    with col_v:
+        if st.button("REGISTRAR / 등록", disabled=bloqueado):
+            if cod:
+                db.collection(cat).add({
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
+                    "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
+                    "solicitante": solicitante,
+                    "registrado_por": st.session_state.user
+                })
+                st.success("✅ REGISTRADO / 등록 완료")
+                st.balloons()
+            else:
+                st.error("Por favor, ingresa el ID.")
+        
+        if st.button("VOLVER / 돌아가기"): 
+            st.session_state.page = 'menu'
+            st.rerun()
 
 def admin():
-    # INFO DE LA FOTO INYECTADA EN EL CÓDIGO MASTER
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
     
     t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자"])
@@ -246,7 +274,6 @@ def admin():
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
                 df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','nombre':'NOMBRE','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOLICITANTE','registrado_por':'USUARIO'})
-                # Extraer columnas de forma segura para evitar errores
                 cols_to_export = [c for c in ['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','USUARIO'] if c in df.columns]
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
