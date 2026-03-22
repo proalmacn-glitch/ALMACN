@@ -1,4 +1,4 @@
-import streamlit as st
+mport streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 import pandas as pd
@@ -107,13 +107,9 @@ if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
 # ================= VISTAS / 보기 =================
 
 def login():
-    # Diseño de la primera imagen: Login, luego Salida Rápida, luego GIF
-    st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='color:red;'>ALMACÉN / 창고 🔗</h3>", unsafe_allow_html=True)
-    
-    u_in = st.text_input("Usuario / 사용자").upper().strip()
-    p_in = st.text_input("Clave / 비밀번호", type="password").strip()
-    
+    st.title("LOGIN / 로그인")
+    u_in = st.text_input("USUARIO / 사용자").upper().strip()
+    p_in = st.text_input("CLAVE / 비밀번호", type="password").strip()
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
@@ -127,10 +123,31 @@ def login():
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
             st.success(f"User: {u} | Pass: {p}")
-            
     st.divider()
+    st.markdown('<div class="center-container">', unsafe_allow_html=True)
+    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def menu():
+    st.title("ALMACÉN / 창고")
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
-    st.markdown("<h2>SALIDA RÁPIDA / 빠른 출고</h2>", unsafe_allow_html=True)
+    st.subheader("MATERIALES / 자재")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
+    with c2:
+        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
+    
+    st.subheader("HOLDERS / 홀더")
+    c3, c4 = st.columns(2)
+    with c3:
+        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
+    with c4:
+        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
+    
+    st.divider()
+    st.markdown("### SALIDA RÁPIDA / 빠른 출고")
     c5, c6 = st.columns(2)
     with c5:
         if st.button("SALIDA MATERIALES / 자재 출고"): ir("SALIDA", "materiales")
@@ -139,35 +156,11 @@ def login():
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): st.session_state.page = 'buscar'; st.rerun()
     
-    st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def menu():
-    # Diseño de la segunda imagen: Columnas arriba, botones a la izquierda abajo
-    st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
-    
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<h3>MATERIALES / 자재</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
-    with c2:
-        st.markdown("<h3>HOLDERS / 홀더</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
-    
     st.divider()
-    
-    col_btn, _ = st.columns([0.4, 0.6])
-    with col_btn:
-        if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-        if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-        if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+    if st.button("⚙️ PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
+    if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
-    # Mismo código original de buscar
     st.header("BUSCAR / 검색")
     busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
     
@@ -229,7 +222,6 @@ def buscar():
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def formulario():
-    # Mismo código original de formulario (con st.balloons incluido)
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.header(f"{cat.upper()} - {acc}")
     with st.expander("📷 CÁMARA QR / QR 카메라"):
@@ -253,13 +245,9 @@ def formulario():
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def admin():
-    # Diseño de la tercera imagen: Carga Excel, Destino, y botón VOLVER acortado a la izquierda.
-    # Cero funciones de borrado, igual que tu primer código.
-    st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
-    
+    st.title("PANEL CONTROL / 제어판")
     arch = st.file_uploader("Subir Excel / 엑셀 업로드", type=['xlsx'])
     dest = st.selectbox("Destino / 대상", ["materiales", "holders"])
-    
     if arch and st.button("🚀 CARGAR / 로드"):
         df = pd.read_excel(arch)
         df.columns = [str(c).strip().upper() for c in df.columns]
@@ -270,12 +258,7 @@ def admin():
                 "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
             })
         st.success("✅ CARGA EXITOSA / 로드 성공")
-        
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    col_v, _ = st.columns([0.3, 0.7])
-    with col_v:
-        if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
