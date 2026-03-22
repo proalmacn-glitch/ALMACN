@@ -122,7 +122,8 @@ def login():
             ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
-        st.session_state.user = "INVITADO"
+        if not st.session_state.user:
+            st.session_state.user = "INVITADO"
         st.session_state.page = 'buscar'; st.rerun()
     
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
@@ -163,7 +164,8 @@ def cambiar_datos():
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
+    usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
+    st.info(f"HOLA / 안녕하세요: {usuario_actual}")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -201,6 +203,9 @@ def buscar():
                     coincidencias.append(data)
         
         if coincidencias:
+            if len(coincidencias) > 1:
+                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN.")
+                
             opciones = [c['label'] for c in coincidencias]
             seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
             item = next(c for c in coincidencias if c['label'] == seleccion)
@@ -246,7 +251,6 @@ def buscar():
         else:
             st.warning("No se encontraron resultados / 결과 없음")
 
-    # --- SEGURIDAD: REDIRECCIÓN PARA INVITADOS ---
     if st.button("VOLVER / 돌아가기"): 
         if st.session_state.user == "INVITADO":
             st.session_state.user = None
@@ -292,6 +296,7 @@ def formulario():
                 cod_final = coincidencias[0]['item']
                 st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
             else:
+                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN.")
                 opciones = [c['label'] for c in coincidencias]
                 seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
                 item_sel = next(c for c in coincidencias if c['label'] == seleccion)
@@ -321,11 +326,12 @@ def formulario():
     with col_v:
         if st.button("REGISTRAR / 등록", disabled=bloqueado):
             if cod_final:
+                usuario_registro = st.session_state.user if st.session_state.user else "INVITADO"
                 db.collection(cat).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                     "solicitante": solicitante,
-                    "registrado_por": st.session_state.user
+                    "registrado_por": usuario_registro
                 })
                 st.success("✅ REGISTRADO / 등록 완료")
                 st.balloons()
@@ -333,7 +339,6 @@ def formulario():
             else:
                 st.error("Por favor, ingresa el ID.")
         
-        # --- SEGURIDAD: REDIRECCIÓN PARA INVITADOS ---
         if st.button("VOLVER / 돌아가기"): 
             st.session_state.scanned_id = "" 
             if st.session_state.user == "INVITADO":
