@@ -106,7 +106,7 @@ def login():
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal: {u} | Pass: {p}")
+            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
             
     st.divider()
     
@@ -145,7 +145,7 @@ def cambiar_datos():
                 if nuevo_u != st.session_state.user:
                     doc_check = db.collection("USUARIOS").document(nuevo_u).get()
                     if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
+                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
                         return
                 
                 db.collection("USUARIOS").document(nuevo_u).set({
@@ -157,10 +157,10 @@ def cambiar_datos():
                     
                 st.session_state.user = nuevo_u
                 st.session_state.page = 'menu'
-                st.success("✅ Datos actualizados!")
+                st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
                 st.rerun()
             else:
-                st.error("⚠️ Completa ambos campos.")
+                st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
@@ -204,7 +204,7 @@ def buscar():
         
         if coincidencias:
             if len(coincidencias) > 1:
-                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN.")
+                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN. / {len(coincidencias)}개의 일치 항목이 있습니다. 선택을 확인하세요.")
                 
             opciones = [c['label'] for c in coincidencias]
             seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
@@ -294,15 +294,15 @@ def formulario():
         if coincidencias:
             if len(coincidencias) == 1:
                 cod_final = coincidencias[0]['item']
-                st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
+                st.success(f"✅ Seleccionado / 선택됨: {coincidencias[0]['label']}")
             else:
-                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN.")
+                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN. / {len(coincidencias)}개의 일치 항목이 있습니다. 선택을 확인하세요.")
                 opciones = [c['label'] for c in coincidencias]
                 seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
                 item_sel = next(c for c in coincidencias if c['label'] == seleccion)
                 cod_final = item_sel['item']
         else:
-            st.warning("⚠️ No encontrado en la base de datos.")
+            st.warning("⚠️ No encontrado en la base de datos. / 데이터베이스에서 찾을 수 없습니다.")
             cod_final = busqueda_form
 
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
@@ -337,7 +337,7 @@ def formulario():
                 st.balloons()
                 st.session_state.scanned_id = "" 
             else:
-                st.error("Por favor, ingresa el ID.")
+                st.error("Por favor, ingresa el ID. / ID를 입력해 주세요.")
         
         if st.button("VOLVER / 돌아가기"): 
             st.session_state.scanned_id = "" 
