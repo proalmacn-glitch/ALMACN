@@ -96,13 +96,19 @@ def login():
             doc = db.collection("USUARIOS").document(u_in).get()
             if doc.exists and str(doc.to_dict().get('clave')) == p_in:
                 st.session_state.user = u_in
-                st.session_state.page = 'menu'; st.rerun()
+                # VALIDACIÓN DE PRIMER INGRESO
+                if doc.to_dict().get('estado') == "NUEVO":
+                    st.session_state.page = 'cambiar_datos'
+                else:
+                    st.session_state.page = 'menu'
+                st.rerun()
             else: st.error("Error de credenciales / 자격 증명 오류")
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
-            st.success(f"User: {u} | Pass: {p}")
+            # SE ASIGNA ESTADO 'NUEVO' AL REGISTRAR
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
+            st.success(f"User temporal: {u} | Pass: {p}")
             
     st.divider()
     
@@ -110,17 +116,14 @@ def login():
     c5, c6 = st.columns(2)
     with c5:
         if st.button("SALIDA MATERIALES / 자재 출고"):
-            # ASIGNAMOS INVITADO SI ENTRAN DIRECTO
             st.session_state.user = "INVITADO"
             ir("SALIDA", "materiales")
     with c6:
         if st.button("SALIDA HOLDERS / 홀더 출고"):
-            # ASIGNAMOS INVITADO SI ENTRAN DIRECTO
             st.session_state.user = "INVITADO"
             ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
-        # ASIGNAMOS INVITADO SI ENTRAN A BUSCAR DIRECTO
         if not st.session_state.user:
             st.session_state.user = "INVITADO"
         st.session_state.page = 'buscar'; st.rerun()
@@ -129,10 +132,41 @@ def login():
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
 
+def cambiar_datos():
+    st.markdown("<h1>ACTUALIZAR DATOS / 데이터 업데이트</h1>", unsafe_allow_html=True)
+    st.info("⚠️ Para continuar, por favor personaliza tu usuario y contraseña. / 계속하려면 사용자 이름과 비밀번호를 설정하세요.")
+    
+    nuevo_u = st.text_input("NUEVO USUARIO / 새 사용자").upper().strip()
+    nueva_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password").strip()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_v, _ = st.columns([0.4, 0.6])
+    with col_v:
+        if st.button("GUARDAR Y ENTRAR / 저장 및 입장"):
+            if nuevo_u and nueva_p:
+                if nuevo_u != st.session_state.user:
+                    doc_check = db.collection("USUARIOS").document(nuevo_u).get()
+                    if doc_check.exists:
+                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
+                        return
+                
+                # Guarda los nuevos datos y borra los viejos si cambió el ID de usuario
+                db.collection("USUARIOS").document(nuevo_u).set({
+                    "clave": nueva_p, 
+                    "estado": "ACTIVO"
+                })
+                if nuevo_u != st.session_state.user:
+                    db.collection("USUARIOS").document(st.session_state.user).delete()
+                    
+                st.session_state.user = nuevo_u
+                st.session_state.page = 'menu'
+                st.success("✅ Datos actualizados!")
+                st.rerun()
+            else:
+                st.error("⚠️ Completa ambos campos.")
+
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    
-    # CONTROL PARA QUE NUNCA DIGA 'NONE'
     usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
     st.info(f"HOLA / 안녕하세요: {usuario_actual}")
     
@@ -282,9 +316,7 @@ def formulario():
     with col_v:
         if st.button("REGISTRAR / 등록", disabled=bloqueado):
             if cod_final:
-                # Nos aseguramos de mandar INVITADO si está vacío
                 usuario_registro = st.session_state.user if st.session_state.user else "INVITADO"
-                
                 db.collection(cat).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
@@ -305,18 +337,28 @@ def formulario():
 def admin():
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
     
-    t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자"])
+    # --- LÓGICA DE PRIVILEGIOS DE YAKO ---
+    es_yako = (st.session_state.user == "YAKO")
     
-    with t1:
-        st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
-        cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-        del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
-        if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
-            if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
-                ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
-                for d in ds: db.collection(cdb).document(d.id).delete()
-                st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
+    if es_yako:
+        t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자"])
+    else:
+        # Si no es YAKO, solo ve dos opciones (EXCEL y CARGA MASIVA)
+        t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
+    
+    # Pestaña Borrar (SOLO YAKO)
+    if es_yako:
+        with t1:
+            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
+            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
+            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
+            if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
+                if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
+                    ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
+                    for d in ds: db.collection(cdb).document(d.id).delete()
+                    st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
                 
+    # Pestaña Excel (TODOS LOS QUE ENTREN A ADMIN)
     with t2:
         ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
@@ -327,6 +369,7 @@ def admin():
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
+    # Pestaña Carga Masiva (TODOS LOS QUE ENTREN A ADMIN)
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
@@ -340,19 +383,23 @@ def admin():
                     "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
                     "foto_url": str(f.get('FOTO','NO FOTO')),
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "registrado_por": "ADMIN"
+                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                 })
             st.success("CARGA LISTA / 로드 완료")
             
-    with t4:
-        uds = db.collection("USUARIOS").stream()
-        for u in uds:
-            ud = u.to_dict()
-            with st.container():
-                st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")}</div>', unsafe_allow_html=True)
-                if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
-                    db.collection("USUARIOS").document(u.id).delete()
-                    st.rerun()
+    # Pestaña Usuarios (SOLO YAKO)
+    if es_yako:
+        with t4:
+            uds = db.collection("USUARIOS").stream()
+            for u in uds:
+                ud = u.to_dict()
+                with st.container():
+                    st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
+                    # YAKO no puede borrarse a sí mismo por accidente
+                    if u.id != "YAKO":
+                        if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
+                            db.collection("USUARIOS").document(u.id).delete()
+                            st.rerun()
                     
     st.markdown("<br><br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
@@ -363,6 +410,7 @@ def admin():
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
+elif st.session_state.page == 'cambiar_datos': cambiar_datos()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'form': formulario()
