@@ -30,7 +30,7 @@ db = firestore.client()
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
-    """Limpia y prepara el enlace de la imagen."""
+    """Limpia el enlace para asegurar que Streamlit lo muestre correctamente."""
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]: 
         return None
     url_limpia = str(url).strip()
@@ -69,25 +69,28 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     
-    /* DISEÑO PARA QR IZQUIERDA E IMAGEN DERECHA */
+    /* CONTENEDOR PARA QR IZQ | IMAGEN DER (CUADRO VERDE) */
     .media-container {
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
         justify-content: center;
         align-items: center;
-        gap: 20px;
+        gap: 30px;
         width: 100%;
         margin-top: 20px;
     }
     .photo-right {
         flex: 1;
-        max-width: 400px;
+        max-width: 450px;
         min-width: 280px;
+        border-radius: 15px;
+        border: 3px solid red;
+        box-shadow: 0px 4px 20px rgba(255, 0, 0, 0.6);
     }
-    .qr-left {
+    .qr-left-box {
         background-color: #1a1a1a;
-        padding: 15px;
+        padding: 20px;
         border-radius: 15px;
         border: 1px solid #333;
         display: flex;
@@ -123,7 +126,7 @@ def login():
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "ACTIVO"})
             st.success(f"User: {u} | Pass: {p}")
     st.divider()
-    # GIF DE BIENVENIDA RECUPERADO
+    # GIF DEL MONTACARGAS RESTAURADO
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -131,6 +134,8 @@ def login():
 def menu():
     st.title("ALMACÉN / 창고")
     st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
+    
+    # BOTONES DE ENTRADA Y SALIDA RESTAURADOS
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
@@ -140,10 +145,14 @@ def menu():
         st.subheader("HOLDERS / 홀더")
         if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
+    
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     if st.button("⚙️ PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-    if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+    if st.button("SALIR / 로그아웃"): 
+        st.session_state.user = None
+        st.session_state.page = 'login'
+        st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
@@ -170,6 +179,7 @@ def buscar():
             id_f, col_f = item.get('item'), item['cat_db']
             st.markdown(f"<h2>{item.get('nombre')}</h2>", unsafe_allow_html=True)
             
+            # Cálculo de Stock Real
             docs_s = db.collection(col_f).where("item", "==", id_f).stream()
             tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
             
@@ -179,28 +189,28 @@ def buscar():
             
             st.divider()
             
-            # --- ESTRUCTURA DE MEDIOS: QR IZQUIERDA | IMAGEN DERECHA ---
+            # --- DISEÑO: QR IZQUIERDA | IMAGEN DERECHA (CUADRO VERDE) ---
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            # 1. QR (IZQUIERDA)
+            # QR (IZQUIERDA) - Invertido (Blanco sobre Negro)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
             st.markdown(f'''
-                <div class="qr-left">
+                <div class="qr-left-box">
                     <img src="{qr_url}" width="150">
                     <div style="margin-top:5px; font-size:12px; color:gray;">QR {id_f}</div>
                 </div>
             ''', unsafe_allow_html=True)
             
-            # 2. IMAGEN (DERECHA - POSICIÓN CUADRO VERDE)
+            # FOTO (DERECHA - CUADRO VERDE)
             foto_url = obtener_url_final(item.get('foto_url', ''))
             if foto_url:
                 st.markdown(f'''
                     <div class="photo-right">
-                        <img src="{foto_url}" style="width:100%; border-radius:15px; border:3px solid red; box-shadow: 0px 4px 15px rgba(255,0,0,0.5);">
+                        <img src="{foto_url}" style="width:100%; border-radius:12px;">
                     </div>
                 ''', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
+                st.markdown('<div class="photo-right" style="text-align:center; padding:20px;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)
         else:
