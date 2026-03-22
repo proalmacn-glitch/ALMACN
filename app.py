@@ -56,54 +56,18 @@ def ir(acc, cat):
     st.session_state.scanned_id = ""
     st.rerun()
 
-# --- NUEVO: GENERADOR DE QR CON LOGO EN EL CENTRO ---
-def generar_qr_con_logo(datos, ruta_logo="logo.png"):
-    try:
-        import qrcode
-        from PIL import Image
-        import base64
-        from io import BytesIO
-        
-        # Corrección alta (H) es obligatoria al usar logos en el centro
-        qr = qrcode.QRCode(
-            error_correction=qrcode.constants.ERROR_CORRECT_H,
-            box_size=10,
-            border=2,
-        )
-        qr.add_data(datos)
-        qr.make(fit=True)
-
-        # Colores del QR (Blanco sobre negro)
-        img_qr = qr.make_image(fill_color="white", back_color="black").convert('RGBA')
-
-        # Verificar si la imagen 'logo.png' existe en la carpeta
-        if os.path.exists(ruta_logo):
-            logo = Image.open(ruta_logo).convert("RGBA")
-            
-            # Ajustar tamaño del logo al 30% del QR
-            logo_size = int(img_qr.size[0] * 0.30)
-            wpercent = (logo_size / float(logo.size[0]))
-            hsize = int((float(logo.size[1]) * float(wpercent)))
-            
-            resample_filter = getattr(Image, 'Resampling', Image).LANCZOS
-            logo = logo.resize((logo_size, hsize), resample_filter)
-
-            # Posicionar al centro exacto
-            pos = ((img_qr.size[0] - logo.size[0]) // 2, (img_qr.size[1] - logo.size[1]) // 2)
-            
-            # Pegar el logo respetando transparencias si las tiene
-            img_qr.paste(logo, pos, mask=logo)
-
-        # Convertir a Base64 para mostrarlo directo en la web sin guardarlo
-        buffered = BytesIO()
-        img_qr.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode()
-        return f"data:image/png;base64,{img_str}"
-        
-    except Exception as e:
-        # Fallback de emergencia: si falta la librería, usa la API de internet
-        nombre_codificado = urllib.parse.quote(datos)
-        return f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
+# --- NUEVO: GENERADOR DE QR CON LOGO (VÍA API ONLINE) ---
+def generar_qr_con_logo(datos):
+    # Codificamos los datos (NOMBRE/ID)
+    datos_codificados = urllib.parse.quote(datos)
+    
+    # URL directa del logo de Sungwoo Hitech (extraída del enlace de Indeed)
+    logo_url = "https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/256x256/0f1bc8fa526b1f2cdfb386b24d77b81d"
+    logo_codificado = urllib.parse.quote(logo_url)
+    
+    # API de QuickChart que permite incrustar imágenes centrales automáticamente
+    url_final = f"https://quickchart.io/qr?text={datos_codificados}&size=150&centerImageUrl={logo_codificado}"
+    return url_final
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
@@ -273,7 +237,7 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            # --- USO DE LA NUEVA FUNCIÓN DEL QR ---
+            # --- LLAMADA A LA NUEVA FUNCIÓN DEL QR CON LOGO ---
             nombre_id_qr = f"{nombre_item}/{id_f}"
             qr_url = generar_qr_con_logo(nombre_id_qr)
             
@@ -315,7 +279,6 @@ def formulario():
     cod_final = ""
     
     if busqueda_form:
-        # Extrae inteligentemente el ID si el QR viene en formato "NOMBRE/ID"
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         
         coincidencias = []
@@ -416,7 +379,7 @@ def admin():
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
     with t3:
-        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
+        dest = st.selectbox("DESTINO / 목적지", ["MATERIALES", "HOLDERS"])
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
         if arch and st.button("🚀 INICIAR CARGA / 로드 시작"):
             df_in = pd.read_excel(arch)
