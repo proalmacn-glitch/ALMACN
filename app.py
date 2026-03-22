@@ -122,8 +122,7 @@ def login():
             ir("SALIDA", "holders")
     
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
-        if not st.session_state.user:
-            st.session_state.user = "INVITADO"
+        st.session_state.user = "INVITADO"
         st.session_state.page = 'buscar'; st.rerun()
     
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
@@ -164,8 +163,7 @@ def cambiar_datos():
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
-    usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
-    st.info(f"HOLA / 안녕하세요: {usuario_actual}")
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     
     c1, c2 = st.columns(2)
     with c1:
@@ -224,7 +222,6 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            # --- QR NORMAL CON FORMATO NOMBRE/ID ---
             nombre_id_qr = f"{nombre_item}/{id_f}"
             nombre_codificado = urllib.parse.quote(nombre_id_qr)
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
@@ -249,7 +246,14 @@ def buscar():
         else:
             st.warning("No se encontraron resultados / 결과 없음")
 
-    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
+    # --- SEGURIDAD: REDIRECCIÓN PARA INVITADOS ---
+    if st.button("VOLVER / 돌아가기"): 
+        if st.session_state.user == "INVITADO":
+            st.session_state.user = None
+            st.session_state.page = 'login'
+        else:
+            st.session_state.page = 'menu'
+        st.rerun()
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
@@ -317,12 +321,11 @@ def formulario():
     with col_v:
         if st.button("REGISTRAR / 등록", disabled=bloqueado):
             if cod_final:
-                usuario_registro = st.session_state.user if st.session_state.user else "INVITADO"
                 db.collection(cat).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                     "solicitante": solicitante,
-                    "registrado_por": usuario_registro
+                    "registrado_por": st.session_state.user
                 })
                 st.success("✅ REGISTRADO / 등록 완료")
                 st.balloons()
@@ -330,9 +333,14 @@ def formulario():
             else:
                 st.error("Por favor, ingresa el ID.")
         
+        # --- SEGURIDAD: REDIRECCIÓN PARA INVITADOS ---
         if st.button("VOLVER / 돌아가기"): 
             st.session_state.scanned_id = "" 
-            st.session_state.page = 'menu'
+            if st.session_state.user == "INVITADO":
+                st.session_state.user = None
+                st.session_state.page = 'login'
+            else:
+                st.session_state.page = 'menu'
             st.rerun()
 
 def admin():
