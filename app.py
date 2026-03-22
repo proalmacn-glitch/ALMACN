@@ -30,6 +30,7 @@ db = firestore.client()
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
+    """Limpia y prepara el enlace de la imagen."""
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]: 
         return None
     url_limpia = str(url).strip()
@@ -68,21 +69,31 @@ st.markdown("""
     div[data-testid="stMetricLabel"] { font-size: 18px !important; color: white !important; text-align: center !important; }
     div[data-testid="stMetric"] { background-color: #111; padding: 10px; border-radius: 10px; border: 1px solid #333; }
     
-    /* CENTRADO TOTAL */
-    .center-container {
+    /* DISEÑO DE COLUMNAS PARA FOTO Y QR */
+    .flex-container {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        width: 100%;
+        margin-top: 20px;
+        flex-wrap: wrap;
+    }
+    .photo-box {
+        flex: 1;
+        max-width: 400px;
+        min-width: 280px;
+    }
+    .qr-box {
+        background-color: #1a1a1a;
+        padding: 15px;
+        border-radius: 15px;
+        border: 1px solid #333;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        text-align: center;
-        width: 100%;
-    }
-    .qr-box {
-        background-color: #1a1a1a;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #333;
-        margin-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -104,30 +115,30 @@ def login():
             st.session_state.page = 'menu'; st.rerun()
         else: st.error("Error de credenciales")
     st.divider()
-    st.markdown('<div class="center-container">', unsafe_allow_html=True)
-    st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<div style="text-align:center;"><img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif"></div>', unsafe_allow_html=True)
 
 def menu():
     st.title("ALMACÉN / 창고")
-    st.info(f"HOLA: {st.session_state.user}")
+    st.info(f"HOLA / 안녕하세요: {st.session_state.user}")
     c1, c2 = st.columns(2)
     with c1:
+        st.subheader("MATERIALES / 자재")
         if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
         if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
+        st.subheader("HOLDERS / 홀더")
         if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
         if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     if st.button("⚙️ PANEL CONTROL"): st.session_state.page = 'admin'; st.rerun()
-    if st.button("SALIR"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+    if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
     st.header("BUSCAR / 검색")
-    busqueda = st.text_input("NOMBRE O ID / 이름 o ID").upper().strip()
+    termino = st.text_input("NOMBRE O ID / 이름 o ID 입력").upper().strip()
     
-    if busqueda:
+    if termino:
         coincidencias = []
         for col in ["materiales", "holders"]:
             docs = db.collection(col).stream()
@@ -135,7 +146,7 @@ def buscar():
                 data = d.to_dict()
                 nom = str(data.get('nombre', '')).upper()
                 idx = str(data.get('item', '')).upper()
-                if busqueda in nom or busqueda in idx:
+                if termino in nom or termino in idx:
                     data['cat_db'] = col
                     data['label'] = f"{nom} | {idx}"
                     coincidencias.append(data)
@@ -158,10 +169,22 @@ def buscar():
             
             st.divider()
             
-            # --- ÁREA CENTRADA PARA QR E IMAGEN ---
-            st.markdown('<div class="center-container">', unsafe_allow_html=True)
+            # --- ÁREA DE FOTO (IZQ) Y QR (DER) ---
+            st.markdown('<div class="flex-container">', unsafe_allow_html=True)
             
-            # 1. QR ESTILO PERSONALIZADO (Fondo negro, módulos blancos)
+            # 1. FOTO (IZQUIERDA)
+            foto_url = obtener_url_final(item.get('foto_url', ''))
+            if foto_url:
+                st.markdown(f'''
+                    <div class="photo-box">
+                        <img src="{foto_url}" style="width:100%; border-radius:15px; border:3px solid red; box-shadow: 0px 4px 15px rgba(255,0,0,0.5);">
+                    </div>
+                ''', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="photo-box" style="text-align:center; color:gray;">Sin foto</div>', unsafe_allow_html=True)
+            
+            # 2. QR (DERECHA - POSICIÓN PALOMEADA)
+            # Invertido: fondo negro, módulos blancos
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}&bgcolor=000000&color=ffffff"
             st.markdown(f'''
                 <div class="qr-box">
@@ -170,22 +193,11 @@ def buscar():
                 </div>
             ''', unsafe_allow_html=True)
             
-            # 2. IMAGEN DE MATERIAL (ImgBB)
-            foto_url = obtener_url_final(item.get('foto_url', ''))
-            if foto_url:
-                st.markdown(f'''
-                    <div style="margin-top:10px;">
-                        <img src="{foto_url}" style="width:100%; max-width:450px; border-radius:15px; border:3px solid red; box-shadow: 0px 4px 15px rgba(255,0,0,0.5);">
-                    </div>
-                ''', unsafe_allow_html=True)
-            else:
-                st.info("Sin foto disponible")
-                
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.warning("No se encontraron resultados")
 
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
@@ -197,15 +209,18 @@ def formulario():
             if res: st.session_state.scanned_id = res
             
     cod = st.text_input("ID / 코드", value=st.session_state.scanned_id).upper().strip()
-    cant = st.number_input("CANTIDAD", min_value=1)
+    cant = st.number_input("CANTIDAD / 수량", min_value=1)
+    ubi = st.text_input("UBICACIÓN / 위치").upper() if acc == "ENTRADA" else "SALIDA"
     
-    if st.button("REGISTRAR"):
+    if st.button("REGISTRAR / 등록"):
         db.collection(cat).add({
             "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod,
-            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": "ALM", "registrado_por": st.session_state.user
+            "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
+            "registrado_por": st.session_state.user
         })
-        st.success("REGISTRADO"); st.balloons()
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+        st.success("✅ REGISTRADO"); st.balloons()
+    
+    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 def admin():
     st.title("PANEL CONTROL")
@@ -221,7 +236,7 @@ def admin():
                 "foto_url": str(f.get('FOTO','')), "fecha": datetime.now().strftime("%Y-%m-%d %H:%M")
             })
         st.success("CARGA EXITOSA")
-    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu'; st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
