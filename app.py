@@ -30,13 +30,12 @@ db = firestore.client()
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def convertir_link_drive(url):
-    if not url or url == "NO FOTO": return None
-    if 'drive.google.com' in url:
-        match = re.search(r'(?:id=|d/)([-\w]{25,})', url)
-        if match:
-            file_id = match.group(1)
-            return f'https://drive.google.com/uc?export=view&id={file_id}'
-    return url
+    if not url or str(url).upper() == "NO FOTO" or str(url) == "nan": return None
+    match = re.search(r'(?:id=|d/|file/d/)([-\w]{25,})', str(url))
+    if match:
+        file_id = match.group(1)
+        return f'https://drive.google.com/uc?export=view&id={file_id}'
+    return str(url) if "http" in str(url) else None
 
 def decodificar_qr(foto):
     try:
@@ -107,10 +106,8 @@ def login():
             st.success(f"TOMA FOTO / 사진 찍기:\nUser: {u}\nPass: {p}")
     st.divider()
     c_inv1, c_inv2 = st.columns(2)
-    if c_inv1.button("SALIDA MAT INVITADO / 자재 출고 (게스트)"): 
-        st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
-    if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고 (게스트)"): 
-        st.session_state.user="INVITADO"; ir("SALIDA", "holders")
+    if c_inv1.button("SALIDA MAT INVITADO / 자재 출고"): st.session_state.user="INVITADO"; ir("SALIDA", "materiales")
+    if c_inv2.button("SALIDA HOL INVITADO / 홀더 출고"): st.session_state.user="INVITADO"; ir("SALIDA", "holders")
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
 
@@ -120,16 +117,15 @@ def menu():
     c1, c2 = st.columns(2)
     with c1:
         st.subheader("MATERIALES / 자재")
-        if st.button("ENTRADA MAT / 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 출고"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
         st.subheader("HOLDERS / 홀더")
-        if st.button("ENTRADA HOL / 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 출고"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     st.divider()
     if st.button("🔍 BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-    if st.session_state.user != "INVITADO" and st.button("PANEL CONTROL / 제어판"): 
-        st.session_state.page = 'admin'; st.rerun()
+    if st.session_state.user != "INVITADO" and st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
     if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def formulario():
@@ -140,15 +136,15 @@ def formulario():
         if cam:
             res = decodificar_qr(cam)
             if res: st.session_state.scanned_id = res
-    cod = st.text_input("ID / CÓDIGO / 코드", value=st.session_state.scanned_id).upper().strip()
+    cod = st.text_input("ID / CÓDIGO", value=st.session_state.scanned_id).upper().strip()
     stock_calc = 0
     if cod:
         docs = db.collection(cat).where("item", "==", cod).stream()
         stock_calc = sum([d.to_dict().get('cantidad', 0) for d in docs])
-        st.write(f"📊 STOCK EN SISTEMA / 시스템 재고: **{max(0, stock_calc)}**")
-    col_c1, col_c2 = st.columns(2)
-    cant1 = col_c1.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
-    cant2 = col_c2.number_input("CONFIRMAR / 확인", min_value=0, key="cant2")
+        st.write(f"📊 STOCK EN SISTEMA: **{max(0, stock_calc)}**")
+    c1, c2 = st.columns(2)
+    cant1 = c1.number_input("CANTIDAD", min_value=1, key="cant1")
+    cant2 = c2.number_input("CONFIRMAR", min_value=0, key="cant2")
     sol = st.text_input("SOLICITANTE / 신청자").upper().strip() if acc == "SALIDA" else ""
     ubi_fija = ""
     if cod:
@@ -159,7 +155,7 @@ def formulario():
     bloqueado = cant1 != cant2 or (acc == "SALIDA" and (cant1 > stock_calc or not sol))
     if st.button("REGISTRAR / 등록", disabled=bloqueado):
         db.collection(cat).add({"fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod, "cantidad": cant1 if acc == "ENTRADA" else -cant1, "ubicacion": ubi, "solicitante": sol, "registrado_por": st.session_state.user})
-        animacion_aleatoria(); st.success("✅ ¡ÉXITO! / 성공!"); st.session_state.scanned_id = ""
+        animacion_aleatoria(); st.success("✅ EXITOSO"); st.session_state.scanned_id = ""
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user != "INVITADO" else 'login'; st.rerun()
 
 def buscar():
@@ -185,22 +181,14 @@ def buscar():
             tot = sum([d.to_dict().get('cantidad', 0) for d in d_s])
             c1, c2 = st.columns(2); c1.metric("STOCK ACTUAL / 재고", max(0, tot)); c2.metric("UBICACIÓN / 위치", u_real)
             st.divider()
-            
-            # --- PROTECCIÓN PARA IMÁGENES / 이미지 보호 ---
             st.markdown('<div class="center-container">', unsafe_allow_html=True)
-            try:
-                qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
-                st.markdown(f'<div class="qr-card"><img src="{qr_url}"><br><b style="color:black;">QR {id_f}</b></div>', unsafe_allow_html=True)
-            except:
-                st.warning("QR no disponible / QR을 사용할 수 없습니다.")
-                
-            try:
-                f = convertir_link_drive(item.get('foto_url', ''))
-                if f: st.image(f, width=450)
-            except:
-                st.warning("Foto no disponible / 사진을 사용할 수 없습니다.")
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={id_f}"
+            st.image(qr_url, caption=f"QR {id_f}")
+            f = convertir_link_drive(item.get('foto_url', ''))
+            if f:
+                try: st.image(f, width=450)
+                except: st.warning("Error cargando foto / 사진 로드 오류")
             st.markdown('</div>', unsafe_allow_html=True)
-            
     if st.button("VOLVER / 돌아가기"): st.session_state.page = 'menu' if st.session_state.user else 'login'; st.rerun()
 
 def admin():
@@ -212,18 +200,18 @@ def admin():
 
     if st.session_state.user == "YAKO":
         with tabs[0]:
-            st.subheader("BORRADO / 삭제")
-            cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"], key="admin_del_cat")
-            del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO 삭제)").upper()
+            st.subheader("BORRADO")
+            cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"])
+            del_id = st.text_input("ID ESPECÍFICO (VACÍO = TODO)").upper()
             if st.checkbox("Confirmar Borrado"):
                 if st.button("🔴 EJECUTAR"):
                     ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                     for d in ds: db.collection(cdb).document(d.id).delete()
-                    st.success("BORRADO COMPLETADO"); st.rerun()
+                    st.success("Borrado"); st.rerun()
         with tabs[1]: mostrar_tab_excel()
         with tabs[2]: mostrar_tab_carga()
         with tabs[3]:
-            st.subheader("GESTIÓN DE ACCESOS")
+            st.subheader("GESTIÓN USUARIOS")
             uds = db.collection("USUARIOS").stream()
             for u in uds:
                 ud = u.to_dict()
@@ -236,65 +224,50 @@ def admin():
     else:
         with tabs[0]: mostrar_tab_excel()
         with tabs[1]: mostrar_tab_carga()
-    if st.button("VOLVER AL MENÚ"): st.session_state.page = 'menu'; st.rerun()
+    if st.button("VOLVER"): st.session_state.page = 'menu'; st.rerun()
 
 def mostrar_tab_excel():
-    ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"], key="excel_cat")
-    if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
+    ce = st.selectbox("REPORTE", ["materiales", "holders"], key="excel_cat")
+    if st.button("📥 GENERAR EXCEL BILINGÜE"):
         data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
         if data:
-            # TÍTULOS BILINGÜES EN EXCEL / 엑셀의 이중 언어 제목
             df = pd.DataFrame(data).rename(columns={
-                'fecha': 'FECHA / 날짜',
-                'item': 'ID / 아이디',
-                'cantidad': 'MOVIMIENTO / 이동',
-                'ubicacion': 'UBICACIÓN / 위치',
-                'solicitante': 'SOLICITANTE / 신청자',
-                'registrado_por': 'USUARIO / 사용자'
+                'fecha': 'FECHA / 날짜', 'item': 'ID / 아이디', 'cantidad': 'MOVIMIENTO / 이동',
+                'ubicacion': 'UBICACIÓN / 위치', 'solicitante': 'SOLICITANTE / 신청자', 'registrado_por': 'USUARIO / 사용자'
             })
             csv = df[['FECHA / 날짜', 'ID / 아이디', 'MOVIMIENTO / 이동', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'USUARIO / 사용자']].to_csv(index=False).encode('utf-8-sig')
             st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
 
 def mostrar_tab_carga():
-    dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"], key="carga_cat")
+    dest = st.selectbox("DESTINO", ["materiales", "holders"], key="carga_cat")
     arch = st.file_uploader("Subir .xlsx", type=['xlsx'])
-    if arch and st.button("🚀 CARGAR / 로드"):
+    if arch and st.button("🚀 CARGAR"):
         try:
             df_in = pd.read_excel(arch, engine='openpyxl')
             df_in.columns = [str(c).strip().upper() for c in df_in.columns]
-            
-            # DETECCIÓN FLEXIBLE DE COLUMNA UBICACIÓN
             ubi_col = next((c for c in df_in.columns if "UBIC" in c), None)
-
             for _, f in df_in.iterrows():
                 db.collection(dest).add({
-                    "nombre": str(f['NOMBRE']).upper(),
-                    "item": str(f['ID']).upper(),
-                    "cantidad": int(f['CANTIDAD']),
-                    "ubicacion": str(f[ubi_col]).upper() if ubi_col else "SIN UBICACIÓN",
-                    "foto_url": str(f.get('FOTO', 'NO FOTO')),
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "registrado_por": st.session_state.user
+                    "nombre": str(f['NOMBRE']).upper(), "item": str(f['ID']).upper(), "cantidad": int(f['CANTIDAD']),
+                    "ubicacion": str(f[ubi_col]).upper() if ubi_col else "S/U", "foto_url": str(f.get('FOTO', 'NO FOTO')),
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "registrado_por": st.session_state.user
                 })
-            st.success("✅ CARGA EXITOSA / 로드 완료")
-        except Exception as e:
-            st.error(f"Error al cargar Excel: {e}")
+            st.success("✅ Éxito / 성공")
+        except Exception as e: st.error(f"Error: {e}")
 
 def mostrar_tab_cuenta():
-    st.subheader("⚙️ EDITAR MIS CREDENCIALES / 내 계정 편집")
-    new_u = st.text_input("NUEVO USUARIO / 새 사용자", value=st.session_state.user).upper().strip()
-    new_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password")
-    if st.button("ACTUALIZAR DATOS / 데이터 업데이트"):
+    new_u = st.text_input("NUEVO USUARIO", value=st.session_state.user).upper().strip()
+    new_p = st.text_input("NUEVA CLAVE", type="password")
+    if st.button("ACTUALIZAR DATOS"):
         doc_ref = db.collection("USUARIOS").document(st.session_state.user).get()
         if doc_ref.exists:
             old_data = doc_ref.to_dict()
             db.collection("USUARIOS").document(new_u).set({"clave": new_p, "estado": old_data.get('estado')})
             if new_u != st.session_state.user: db.collection("USUARIOS").document(st.session_state.user).delete()
-            st.success("DATOS ACTUALIZADOS / 완료"); st.session_state.user = new_u; st.rerun()
+            st.success("Listo / 완료"); st.session_state.user = new_u; st.rerun()
 
 if st.session_state.page == 'login': login()
 elif st.session_state.page == 'menu': menu()
 elif st.session_state.page == 'form': formulario()
 elif st.session_state.page == 'buscar': buscar()
 elif st.session_state.page == 'admin': admin()
-    
