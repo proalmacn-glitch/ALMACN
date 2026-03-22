@@ -56,19 +56,6 @@ def ir(acc, cat):
     st.session_state.scanned_id = ""
     st.rerun()
 
-# --- NUEVO: GENERADOR DE QR CON LOGO (VÍA API ONLINE) ---
-def generar_qr_con_logo(datos):
-    # Codificamos los datos (NOMBRE/ID)
-    datos_codificados = urllib.parse.quote(datos)
-    
-    # URL directa del logo de Sungwoo Hitech (extraída del enlace de Indeed)
-    logo_url = "https://d2q79iu7y748jz.cloudfront.net/s/_squarelogo/256x256/0f1bc8fa526b1f2cdfb386b24d77b81d"
-    logo_codificado = urllib.parse.quote(logo_url)
-    
-    # API de QuickChart que permite incrustar imágenes centrales automáticamente
-    url_final = f"https://quickchart.io/qr?text={datos_codificados}&size=150&centerImageUrl={logo_codificado}"
-    return url_final
-
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
     <style>
@@ -237,9 +224,10 @@ def buscar():
             st.divider()
             st.markdown('<div class="media-container">', unsafe_allow_html=True)
             
-            # --- LLAMADA A LA NUEVA FUNCIÓN DEL QR CON LOGO ---
+            # --- QR NORMAL CON FORMATO NOMBRE/ID ---
             nombre_id_qr = f"{nombre_item}/{id_f}"
-            qr_url = generar_qr_con_logo(nombre_id_qr)
+            nombre_codificado = urllib.parse.quote(nombre_id_qr)
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
             
             st.markdown(f'''
                 <div class="qr-left">
@@ -379,7 +367,7 @@ def admin():
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
     with t3:
-        dest = st.selectbox("DESTINO / 목적지", ["MATERIALES", "HOLDERS"])
+        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
         if arch and st.button("🚀 INICIAR CARGA / 로드 시작"):
             df_in = pd.read_excel(arch)
