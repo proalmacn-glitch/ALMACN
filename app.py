@@ -10,6 +10,7 @@ import cv2
 from pyzbar.pyzbar import decode
 import re
 import urllib.parse
+import io
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -106,7 +107,7 @@ def login():
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+            st.success(f"User temporal: {u} | Pass: {p}")
             
     st.divider()
     
@@ -145,7 +146,7 @@ def cambiar_datos():
                 if nuevo_u != st.session_state.user:
                     doc_check = db.collection("USUARIOS").document(nuevo_u).get()
                     if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
+                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
                         return
                 
                 db.collection("USUARIOS").document(nuevo_u).set({
@@ -157,10 +158,10 @@ def cambiar_datos():
                     
                 st.session_state.user = nuevo_u
                 st.session_state.page = 'menu'
-                st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
+                st.success("✅ Datos actualizados!")
                 st.rerun()
             else:
-                st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
+                st.error("⚠️ Completa ambos campos.")
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
@@ -354,7 +355,7 @@ def admin():
     es_yako = (st.session_state.user == "YAKO")
     
     if es_yako:
-        t1, t2, t3, t4 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자"])
+        t1, t2, t3, t4, t5 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔"])
     else:
         t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
     
@@ -407,7 +408,66 @@ def admin():
                         if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
                             db.collection("USUARIOS").document(u.id).delete()
                             st.rerun()
+
+        # --- NUEVA PESTAÑA: ESCANEAR TEXTO (OCR) ---
+        with t5:
+            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
+            st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
+            
+            cam_ocr = st.camera_input("CÁMARA OCR / OCR 카메라", key="cam_ocr")
+            
+            if cam_ocr:
+                try:
+                    import pytesseract
+                    from PIL import Image
+                    import xlsxwriter
                     
+                    # Abrir imagen y extraer texto
+                    img_pil = Image.open(cam_ocr)
+                    texto_extraido = pytesseract.image_to_string(img_pil).strip()
+                    
+                    if texto_extraido:
+                        st.success("✅ Texto detectado / 텍스트 감지됨")
+                        texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
+                        
+                        # Generar Excel en memoria
+                        output = io.BytesIO()
+                        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+                        worksheet = workbook.add_worksheet("OCR_DATA")
+                        
+                        # Formato de columnas
+                        worksheet.set_column('A:A', 40)
+                        worksheet.set_column('B:B', 60)
+                        cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
+                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
+                        
+                        # Escribir Cabeceras
+                        worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
+                        worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
+                        
+                        # Insertar Imagen y Texto
+                        img_data = io.BytesIO(cam_ocr.getvalue())
+                        worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
+                        worksheet.write('B2', texto_final, cell_format)
+                        worksheet.set_row(1, 150) # Altura de fila para acomodar foto
+                        
+                        workbook.close()
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="📥 DESCARGAR EXCEL CON FOTO Y TEXTO / 엑셀 다운로드",
+                            data=output,
+                            file_name=f"OCR_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.warning("⚠️ No se detectó texto claro en la imagen. Intenta de nuevo con mejor iluminación. / 이미지에서 텍스트를 찾을 수 없습니다. 밝은 곳에서 다시 시도하세요.")
+                        
+                except ImportError:
+                    st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
+                except Exception as e:
+                    st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
+
     st.markdown("<br><br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
