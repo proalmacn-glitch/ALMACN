@@ -107,7 +107,7 @@ def login():
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal: {u} | Pass: {p}")
+            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
             
     st.divider()
     
@@ -146,7 +146,7 @@ def cambiar_datos():
                 if nuevo_u != st.session_state.user:
                     doc_check = db.collection("USUARIOS").document(nuevo_u).get()
                     if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
+                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
                         return
                 
                 db.collection("USUARIOS").document(nuevo_u).set({
@@ -158,10 +158,10 @@ def cambiar_datos():
                     
                 st.session_state.user = nuevo_u
                 st.session_state.page = 'menu'
-                st.success("✅ Datos actualizados!")
+                st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
                 st.rerun()
             else:
-                st.error("⚠️ Completa ambos campos.")
+                st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
@@ -272,9 +272,13 @@ def formulario():
                 st.session_state.scanned_id = res
                 st.rerun()
             
-    busqueda_form = st.text_input("ID O NOMBRE / 코드 또는 이름", value=st.session_state.scanned_id).upper().strip()
-    cod_final = ""
+    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
     
+    cod_final = ""
+    nombre_final = ""
+    es_nuevo = False
+    
+    # --- LÓGICA ESTRICTA DE BÚSQUEDA ---
     if busqueda_form:
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         
@@ -292,26 +296,56 @@ def formulario():
                     data['label'] = f"{nom} | {idx}"
                     coincidencias.append(data)
         
-        if coincidencias:
-            if len(coincidencias) == 1:
-                cod_final = coincidencias[0]['item']
-                st.success(f"✅ Seleccionado / 선택됨: {coincidencias[0]['label']}")
+        if acc == "SALIDA":
+            if coincidencias:
+                if len(coincidencias) == 1:
+                    cod_final = coincidencias[0]['item']
+                    nombre_final = coincidencias[0].get('nombre', '')
+                    st.success(f"✅ Seleccionado / 선택됨: {coincidencias[0]['label']}")
+                else:
+                    st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN. / {len(coincidencias)}개의 일치 항목이 있습니다.")
+                    opciones = [c['label'] for c in coincidencias]
+                    seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
+                    item_sel = next(c for c in coincidencias if c['label'] == seleccion)
+                    cod_final = item_sel['item']
+                    nombre_final = item_sel.get('nombre', '')
             else:
-                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. POR FAVOR VERIFICA TU SELECCIÓN. / {len(coincidencias)}개의 일치 항목이 있습니다. 선택을 확인하세요.")
+                st.error("⚠️ MATERIAL NO ENCONTRADO. No puedes dar salida a algo que no existe. / 데이터베이스에서 찾을 수 없습니다.")
+                cod_final = ""
+                
+        else: # ENTRADA
+            if coincidencias:
+                st.info("🔎 Elige el material existente o crea un nuevo registro. / 일치하는 항목이 있습니다. 선택하거나 새로 만드세요.")
                 opciones = [c['label'] for c in coincidencias]
-                seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
-                item_sel = next(c for c in coincidencias if c['label'] == seleccion)
-                cod_final = item_sel['item']
-        else:
-            st.warning("⚠️ No encontrado en la base de datos. / 데이터베이스에서 찾을 수 없습니다.")
-            cod_final = busqueda_form
+                opciones.append("➕ CREAR NUEVO MATERIAL / 새 자재 생성")
+                seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
+                
+                if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성":
+                    es_nuevo = True
+                else:
+                    item_sel = next(c for c in coincidencias if c['label'] == seleccion)
+                    cod_final = item_sel['item']
+                    nombre_final = item_sel.get('nombre', '')
+            else:
+                st.warning("⚠️ No encontrado. Se registrará como NUEVO MATERIAL. / 새로운 자재로 등록됩니다.")
+                es_nuevo = True
+                
+            # Si se decidió que es nuevo, mostrar campos extra
+            if es_nuevo:
+                st.markdown("### ✨ REGISTRAR NUEVO MATERIAL / 새 자재 등록")
+                nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
+                nuevo_nom = st.text_input("NOMBRE DEL MATERIAL / 자재 이름").upper().strip()
+                cod_final = nuevo_id
+                nombre_final = nuevo_nom
 
+    # --- CAMPOS DE CANTIDAD COMPARTIDOS ---
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
     
     if cant != cant_conf and cant_conf > 0:
         st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
 
+    # --- LÓGICA DE BLOQUEO DEPENDIENDO LA ACCIÓN ---
     if acc == "SALIDA":
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         ubi = "SALIDA"
@@ -319,7 +353,8 @@ def formulario():
     else: # ENTRADA
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         solicitante = ""
-        bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final)
+        # En entrada también bloqueamos si es nuevo y se les olvidó ponerle el nombre
+        bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final) or (es_nuevo and not nombre_final)
         
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -329,8 +364,11 @@ def formulario():
             if cod_final:
                 usuario_registro = st.session_state.user if st.session_state.user else "INVITADO"
                 db.collection(cat).add({
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), "item": cod_final,
-                    "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
+                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                    "item": cod_final,
+                    "nombre": nombre_final, # <-- ¡AHORA EL NOMBRE SIEMPRE SE GUARDA EN EL EXCEL!
+                    "cantidad": cant if acc == "ENTRADA" else -cant, 
+                    "ubicacion": ubi, 
                     "solicitante": solicitante,
                     "registrado_por": usuario_registro
                 })
@@ -338,7 +376,7 @@ def formulario():
                 st.balloons()
                 st.session_state.scanned_id = "" 
             else:
-                st.error("Por favor, ingresa el ID. / ID를 입력해 주세요.")
+                st.error("Por favor, revisa la información. / 정보를 확인해 주세요.")
         
         if st.button("VOLVER / 돌아가기"): 
             st.session_state.scanned_id = "" 
@@ -383,19 +421,28 @@ def admin():
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
-        if arch and st.button("🚀 INICIAR CARGA / 로드 시작"):
-            df_in = pd.read_excel(arch)
-            for _, f in df_in.iterrows():
-                db.collection(dest).add({
-                    "nombre": str(f.get('NOMBRE','')).upper(),
-                    "item": str(f.get('ID','')).upper(),
-                    "cantidad": int(f.get('CANTIDAD',0)),
-                    "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
-                    "foto_url": str(f.get('FOTO','NO FOTO')),
-                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
-                })
-            st.success("CARGA LISTA / 로드 완료")
+        if arch:
+            if st.button("🚀 INICIAR CARGA / 로드 시작"):
+                try:
+                    df_in = pd.read_excel(arch, engine='openpyxl')
+                    if df_in.empty:
+                        st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
+                    else:
+                        for _, f in df_in.iterrows():
+                            db.collection(dest).add({
+                                "nombre": str(f.get('NOMBRE','')).upper(),
+                                "item": str(f.get('ID','')).upper(),
+                                "cantidad": int(f.get('CANTIDAD',0)),
+                                "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
+                                "foto_url": str(f.get('FOTO','NO FOTO')),
+                                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                            })
+                        st.success("CARGA LISTA / 로드 완료")
+                        st.balloons()
+                except Exception as e:
+                    st.error(f"⚠️ Error al procesar el Excel: {e}")
+                    st.info("Asegúrate de haber ejecutado 'pip install openpyxl' y que tus columnas se llamen: NOMBRE, ID, CANTIDAD, UBICACIÓN, FOTO")
             
     if es_yako:
         with t4:
@@ -409,7 +456,6 @@ def admin():
                             db.collection("USUARIOS").document(u.id).delete()
                             st.rerun()
 
-        # --- NUEVA PESTAÑA: ESCANEAR TEXTO (OCR) ---
         with t5:
             st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
             st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
@@ -419,10 +465,10 @@ def admin():
             if cam_ocr:
                 try:
                     import pytesseract
+                    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
                     from PIL import Image
                     import xlsxwriter
                     
-                    # Abrir imagen y extraer texto
                     img_pil = Image.open(cam_ocr)
                     texto_extraido = pytesseract.image_to_string(img_pil).strip()
                     
@@ -430,26 +476,22 @@ def admin():
                         st.success("✅ Texto detectado / 텍스트 감지됨")
                         texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
                         
-                        # Generar Excel en memoria
                         output = io.BytesIO()
                         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
                         worksheet = workbook.add_worksheet("OCR_DATA")
                         
-                        # Formato de columnas
                         worksheet.set_column('A:A', 40)
                         worksheet.set_column('B:B', 60)
                         cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
                         header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
                         
-                        # Escribir Cabeceras
                         worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
                         worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
                         
-                        # Insertar Imagen y Texto
                         img_data = io.BytesIO(cam_ocr.getvalue())
                         worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
                         worksheet.write('B2', texto_final, cell_format)
-                        worksheet.set_row(1, 150) # Altura de fila para acomodar foto
+                        worksheet.set_row(1, 150) 
                         
                         workbook.close()
                         output.seek(0)
@@ -467,7 +509,7 @@ def admin():
                     st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
                 except Exception as e:
                     st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
-
+                    
     st.markdown("<br><br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
