@@ -330,7 +330,6 @@ def formulario():
                 st.warning("⚠️ No encontrado. Se registrará como NUEVO MATERIAL. / 새로운 자재로 등록됩니다.")
                 es_nuevo = True
                 
-            # Si se decidió que es nuevo, mostrar campos extra
             if es_nuevo:
                 st.markdown("### ✨ REGISTRAR NUEVO MATERIAL / 새 자재 등록")
                 nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
@@ -345,15 +344,18 @@ def formulario():
     if cant != cant_conf and cant_conf > 0:
         st.error("⚠️ LAS CANTIDADES NO COINCIDEN / 수량이 일치하지 않습니다")
 
-    # --- LÓGICA DE BLOQUEO DEPENDIENDO LA ACCIÓN ---
+    # --- LÓGICA DE BLOQUEO Y CAMPOS NUEVOS (SALIDA/ENTRADA) ---
     if acc == "SALIDA":
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
+        # --- NUEVO CAMPO DE LÍNEA DE USO ---
+        linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
         ubi = "SALIDA"
-        bloqueado = (cant != cant_conf) or (not solicitante) or (not cod_final)
+        # Se bloquea si falta algún campo, incluyendo la línea
+        bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else: # ENTRADA
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         solicitante = ""
-        # En entrada también bloqueamos si es nuevo y se les olvidó ponerle el nombre
+        linea_uso = ""
         bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final) or (es_nuevo and not nombre_final)
         
     st.markdown("<br>", unsafe_allow_html=True)
@@ -366,10 +368,11 @@ def formulario():
                 db.collection(cat).add({
                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"), 
                     "item": cod_final,
-                    "nombre": nombre_final, # <-- ¡AHORA EL NOMBRE SIEMPRE SE GUARDA EN EL EXCEL!
+                    "nombre": nombre_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, 
                     "ubicacion": ubi, 
                     "solicitante": solicitante,
+                    "linea_uso": linea_uso, # <-- ¡NUEVO DATO GUARDADO!
                     "registrado_por": usuario_registro
                 })
                 st.success("✅ REGISTRADO / 등록 완료")
@@ -413,8 +416,9 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
-                df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','nombre':'NOMBRE','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOLICITANTE','registrado_por':'USUARIO'})
-                cols_to_export = [c for c in ['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','USUARIO'] if c in df.columns]
+                # --- ACTUALIZADO PARA INCLUIR LA COLUMNA DE LÍNEA_USO ---
+                df = pd.DataFrame(data).rename(columns={'fecha':'FECHA','item':'ID','nombre':'NOMBRE','cantidad':'MOV','ubicacion':'UBICACIÓN','solicitante':'SOLICITANTE', 'linea_uso':'LÍNEA_USO', 'registrado_por':'USUARIO'})
+                cols_to_export = [c for c in ['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','LÍNEA_USO','USUARIO'] if c in df.columns]
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
