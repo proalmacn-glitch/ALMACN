@@ -423,7 +423,11 @@ def admin():
                     if df_in.empty:
                         st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
                     else:
-                        for _, f in df_in.iterrows():
+                        # --- BARRA DE PROGRESO AÑADIDA AQUÍ ---
+                        total_filas = len(df_in)
+                        barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} registros... / {total_filas}개 레코드 로드 시작...")
+                        
+                        for i, (_, f) in enumerate(df_in.iterrows()):
                             db.collection(dest).add({
                                 "nombre": str(f.get('NOMBRE','')).upper(),
                                 "item": str(f.get('ID','')).upper(),
@@ -433,7 +437,12 @@ def admin():
                                 "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                             })
-                        st.success("CARGA LISTA / 로드 완료")
+                            # Calcular y actualizar el porcentaje
+                            porcentaje = (i + 1) / total_filas
+                            barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%)")
+                        
+                        barra_progreso.empty() # Limpiamos la barra al terminar
+                        st.success("✅ CARGA MASIVA COMPLETADA AL 100% / 대량 로드 100% 완료")
                         st.balloons()
                 except Exception as e:
                     st.error(f"⚠️ Error al procesar el Excel: {e}")
