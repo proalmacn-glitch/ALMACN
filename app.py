@@ -30,6 +30,22 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
+# --- OPTIMIZACIÓN: CACHÉ DE INVENTARIO (EVITA ERROR ResourceExhausted) ---
+@st.cache_data
+def obtener_inventario():
+    datos = []
+    try:
+        for col in ["materiales", "holders"]:
+            docs = db.collection(col).stream()
+            for d in docs:
+                item = d.to_dict()
+                item['cat_db'] = col
+                item['label'] = f"{str(item.get('nombre', '')).upper()} | {str(item.get('item', '')).upper()}"
+                datos.append(item)
+        return datos
+    except Exception as e:
+        return []
+
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]:
@@ -191,23 +207,15 @@ def buscar():
     busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
     
     if busqueda:
-        coincidencias = []
-        for col in ["materiales", "holders"]:
-            docs = db.collection(col).stream()
-            for d in docs:
-                data = d.to_dict()
-                nom = str(data.get('nombre', '')).upper()
-                idx = str(data.get('item', '')).upper()
-                if busqueda in nom or busqueda in idx:
-                    data['cat_db'] = col
-                    data['label'] = f"{nom} | {idx}"
-                    coincidencias.append(data)
+        # Usamos el caché para no gastar lecturas de Firebase
+        inventario_total = obtener_inventario()
+        coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
         
         if coincidencias:
             if len(coincidencias) > 1:
                 st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
                 
-            opciones = [c['label'] for c in coincidencias]
+            opciones = list(set([c['label'] for c in coincidencias])) # Eliminar duplicados en el selector
             seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
             item = next(c for c in coincidencias if c['label'] == seleccion)
             
@@ -215,8 +223,8 @@ def buscar():
             nombre_item = item.get('nombre', '')
             st.markdown(f"<h2>{nombre_item}</h2>", unsafe_allow_html=True)
             
-            docs_s = db.collection(col_f).where("item", "==", id_f).stream()
-            tot = sum([d.to_dict().get('cantidad', 0) for d in docs_s])
+            # Calculamos el total usando la RAM, sin gastar base de datos
+            tot = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
             
             if tot <= 5:
                 st.warning(f"⚠️ STOCK BAJO: Quedan {tot} unidades / 재고 부족: {tot}개 남음")
@@ -280,14 +288,19 @@ def formulario():
     
     if busqueda_form:
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
-        coincidencias = []
-        docs = db.collection(cat).stream()
-        for d in docs:
-            data = d.to_dict()
-            nom, idx = str(data.get('nombre', '')).upper(), str(data.get('item', '')).upper()
-            if termino_busqueda in nom or termino_busqueda in idx:
-                data['label'] = f"{nom} | {idx}"
-                coincidencias.append(data)
+        inventario_total = obtener_inventario()
+        # Filtramos solo la categoría actual en la memoria RAM
+        coincidencias = [item for item in inventario_total if item['cat_db'] == cat and (termino_busqueda in str(item.get('nombre', '')).upper() or termino_busqueda in str(item.get('item', '')).upper())]
+        
+        # Eliminar duplicados para el selector
+        coincidencias_unicas = []
+        vistos = set()
+        for c in coincidencias:
+            if c['label'] not in vistos:
+                vistos.add(c['label'])
+                coincidencias_unicas.append(c)
+                
+        coincidencias = coincidencias_unicas
         
         if acc == "SALIDA":
             if coincidencias:
@@ -362,6 +375,7 @@ def formulario():
                 "evidencia_url": url_foto_final,
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
+            obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL REGISTRAR
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.session_state.scanned_id = "" 
@@ -390,6 +404,7 @@ def admin():
                 if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
                     ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                     for d in ds: db.collection(cdb).document(d.id).delete()
+                    obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL BORRAR
                     st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
                 
     with t2:
@@ -418,7 +433,6 @@ def admin():
         if arch:
             if st.button("🚀 INICIAR CARGA / 로드 시작"):
                 try:
-                    # BLINDAJE CONTRA FILAS FANTASMAS (NaT/NaN)
                     df_in = pd.read_excel(arch, engine='openpyxl')
                     df_in = df_in.fillna('')
                     
@@ -429,7 +443,6 @@ def admin():
                         barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} registros... / {total_filas}개 레코드 로드 시작...")
                         
                         for i, (_, f) in enumerate(df_in.iterrows()):
-                            # Saltar filas vacías (Ghost Rows)
                             item_id = str(f.get('ID', '')).strip()
                             if not item_id:
                                 continue
@@ -450,7 +463,8 @@ def admin():
                             porcentaje = (i + 1) / total_filas
                             barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%)")
                         
-                        barra_progreso.empty() 
+                        barra_progreso.empty()
+                        obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL TERMINAR CARGA MASIVA
                         st.success("✅ CARGA MASIVA COMPLETADA AL 100% / 대량 로드 100% 완료")
                         st.balloons()
                 except Exception as e:
