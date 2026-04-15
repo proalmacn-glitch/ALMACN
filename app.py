@@ -397,7 +397,6 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
-                # --- CABECERAS DEL EXCEL TRADUCIDAS AL COREANO ---
                 df = pd.DataFrame(data).rename(columns={
                     'fecha': 'FECHA / 날짜',
                     'item': 'ID',
@@ -419,29 +418,39 @@ def admin():
         if arch:
             if st.button("🚀 INICIAR CARGA / 로드 시작"):
                 try:
+                    # BLINDAJE CONTRA FILAS FANTASMAS (NaT/NaN)
                     df_in = pd.read_excel(arch, engine='openpyxl')
+                    df_in = df_in.fillna('')
+                    
                     if df_in.empty:
                         st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
                     else:
-                        # --- BARRA DE PROGRESO AÑADIDA AQUÍ ---
                         total_filas = len(df_in)
                         barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} registros... / {total_filas}개 레코드 로드 시작...")
                         
                         for i, (_, f) in enumerate(df_in.iterrows()):
+                            # Saltar filas vacías (Ghost Rows)
+                            item_id = str(f.get('ID', '')).strip()
+                            if not item_id:
+                                continue
+                                
+                            raw_cant = str(f.get('CANTIDAD', '0'))
+                            cant_limpia = re.sub(r'\D', '', raw_cant) 
+                            cantidad_final = int(cant_limpia) if cant_limpia else 0
+
                             db.collection(dest).add({
                                 "nombre": str(f.get('NOMBRE','')).upper(),
-                                "item": str(f.get('ID','')).upper(),
-                                "cantidad": int(f.get('CANTIDAD',0)),
+                                "item": item_id.upper(),
+                                "cantidad": cantidad_final,
                                 "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
                                 "foto_url": str(f.get('FOTO','NO FOTO')),
                                 "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                             })
-                            # Calcular y actualizar el porcentaje
                             porcentaje = (i + 1) / total_filas
                             barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%)")
                         
-                        barra_progreso.empty() # Limpiamos la barra al terminar
+                        barra_progreso.empty() 
                         st.success("✅ CARGA MASIVA COMPLETADA AL 100% / 대량 로드 100% 완료")
                         st.balloons()
                 except Exception as e:
