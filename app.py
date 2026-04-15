@@ -1,6 +1,6 @@
 import streamlit as st
 import firebase_admin
-from firebase_admin import credentials, firestore, storage # Agregamos storage
+from firebase_admin import credentials, firestore, storage 
 import pandas as pd
 from datetime import datetime
 import os
@@ -347,10 +347,8 @@ def formulario():
             url_foto_final = "SIN EVIDENCIA"
             fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             
-            # --- LÓGICA DE SUBIDA A DRIVE (STORAGE) ---
             if foto_evidencia:
                 with st.spinner("Subiendo evidencia..."):
-                    # Nombre de archivo dinámico: EVIDENCIA_SALIDA_NOMBRE_LINEA_FECHA.jpg
                     nombre_archivo = f"evidencias/EVIDENCIA_{nombre_final}_{linea_uso}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg".replace(" ", "_")
                     bucket = storage.bucket()
                     blob = bucket.blob(nombre_archivo)
@@ -362,7 +360,7 @@ def formulario():
                 "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
                 "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                 "solicitante": solicitante, "linea_uso": linea_uso,
-                "evidencia_url": url_foto_final, # Guardamos el link de la foto
+                "evidencia_url": url_foto_final,
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             st.success("✅ REGISTRADO CON ÉXITO")
@@ -376,16 +374,143 @@ def formulario():
 
 def admin():
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
-    es_yako = (st.session_state.user == "YAKO")
-    tabs = ["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔"] if es_yako else ["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"]
-    t_objs = st.tabs(tabs)
     
-    # ... (Lógica de pestañas previas sin cambios significativos) ...
-    # Nota: El Excel detallado ahora incluirá la columna de evidencia_url automáticamente.
+    es_yako = (st.session_state.user == "YAKO")
+    
+    if es_yako:
+        t1, t2, t3, t4, t5 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔"])
+    else:
+        t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
+    
+    if es_yako:
+        with t1:
+            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
+            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
+            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
+            if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
+                if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
+                    ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
+                    for d in ds: db.collection(cdb).document(d.id).delete()
+                    st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
+                
+    with t2:
+        ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
+        if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
+            data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
+            if data:
+                df = pd.DataFrame(data).rename(columns={
+                    'fecha':'FECHA',
+                    'item':'ID',
+                    'nombre':'NOMBRE',
+                    'cantidad':'MOV',
+                    'ubicacion':'UBICACIÓN',
+                    'solicitante':'SOLICITANTE',
+                    'linea_uso':'LÍNEA_USO', 
+                    'evidencia_url': 'EVIDENCIA',
+                    'registrado_por':'USUARIO'
+                })
+                cols_to_export = [c for c in ['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','LÍNEA_USO', 'EVIDENCIA', 'USUARIO'] if c in df.columns]
+                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                
+    with t3:
+        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
+        arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
+        if arch:
+            if st.button("🚀 INICIAR CARGA / 로드 시작"):
+                try:
+                    df_in = pd.read_excel(arch, engine='openpyxl')
+                    if df_in.empty:
+                        st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
+                    else:
+                        for _, f in df_in.iterrows():
+                            db.collection(dest).add({
+                                "nombre": str(f.get('NOMBRE','')).upper(),
+                                "item": str(f.get('ID','')).upper(),
+                                "cantidad": int(f.get('CANTIDAD',0)),
+                                "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
+                                "foto_url": str(f.get('FOTO','NO FOTO')),
+                                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                            })
+                        st.success("CARGA LISTA / 로드 완료")
+                        st.balloons()
+                except Exception as e:
+                    st.error(f"⚠️ Error al procesar el Excel: {e}")
+                    st.info("Asegúrate de haber ejecutado 'pip install openpyxl' y que tus columnas se llamen: NOMBRE, ID, CANTIDAD, UBICACIÓN, FOTO")
+            
+    if es_yako:
+        with t4:
+            uds = db.collection("USUARIOS").stream()
+            for u in uds:
+                ud = u.to_dict()
+                with st.container():
+                    st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
+                    if u.id != "YAKO":
+                        if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
+                            db.collection("USUARIOS").document(u.id).delete()
+                            st.rerun()
 
-    if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
-        st.session_state.page = 'menu'
-        st.rerun()
+        with t5:
+            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
+            st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
+            
+            cam_ocr = st.camera_input("CÁMARA OCR / OCR 카메라", key="cam_ocr")
+            
+            if cam_ocr:
+                try:
+                    import pytesseract
+                    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+                    from PIL import Image
+                    import xlsxwriter
+                    
+                    img_pil = Image.open(cam_ocr)
+                    texto_extraido = pytesseract.image_to_string(img_pil).strip()
+                    
+                    if texto_extraido:
+                        st.success("✅ Texto detectado / 텍스트 감지됨")
+                        texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
+                        
+                        output = io.BytesIO()
+                        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+                        worksheet = workbook.add_worksheet("OCR_DATA")
+                        
+                        worksheet.set_column('A:A', 40)
+                        worksheet.set_column('B:B', 60)
+                        cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
+                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
+                        
+                        worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
+                        worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
+                        
+                        img_data = io.BytesIO(cam_ocr.getvalue())
+                        worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
+                        worksheet.write('B2', texto_final, cell_format)
+                        worksheet.set_row(1, 150) 
+                        
+                        workbook.close()
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="📥 DESCARGAR EXCEL CON FOTO Y TEXTO / 엑셀 다운로드",
+                            data=output,
+                            file_name=f"OCR_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.warning("⚠️ No se detectó texto claro en la imagen. Intenta de nuevo con mejor iluminación. / 이미지에서 텍스트를 찾을 수 없습니다. 밝은 곳에서 다시 시도하세요.")
+                        
+                except ImportError:
+                    st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
+                except Exception as e:
+                    st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
+                    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col_v, _ = st.columns([0.4, 0.6])
+    with col_v:
+        if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
+            st.session_state.page = 'menu'
+            st.rerun()
 
 # --- NAVEGACIÓN ---
 if st.session_state.page == 'login': login()
