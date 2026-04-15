@@ -146,7 +146,7 @@ def cambiar_datos():
                 if nuevo_u != st.session_state.user:
                     doc_check = db.collection("USUARIOS").document(nuevo_u).get()
                     if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다.")
+                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
                         return
                 
                 db.collection("USUARIOS").document(nuevo_u).set({
@@ -161,7 +161,7 @@ def cambiar_datos():
                 st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
                 st.rerun()
             else:
-                st.error("⚠️ Completa ambos campos.")
+                st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
@@ -328,7 +328,6 @@ def formulario():
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
         linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
         
-        # --- NUEVA OPCIÓN DE EVIDENCIA ---
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA")
             
@@ -398,18 +397,19 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
+                # --- CABECERAS DEL EXCEL TRADUCIDAS AL COREANO ---
                 df = pd.DataFrame(data).rename(columns={
-                    'fecha':'FECHA',
-                    'item':'ID',
-                    'nombre':'NOMBRE',
-                    'cantidad':'MOV',
-                    'ubicacion':'UBICACIÓN',
-                    'solicitante':'SOLICITANTE',
-                    'linea_uso':'LÍNEA_USO', 
-                    'evidencia_url': 'EVIDENCIA',
-                    'registrado_por':'USUARIO'
+                    'fecha': 'FECHA / 날짜',
+                    'item': 'ID',
+                    'nombre': 'NOMBRE / 이름',
+                    'cantidad': 'CANTIDAD / 수량',
+                    'ubicacion': 'UBICACIÓN / 위치',
+                    'solicitante': 'SOLICITANTE / 신청자',
+                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
+                    'evidencia_url': 'EVIDENCIA / 증거',
+                    'registrado_por': 'USUARIO / 사용자'
                 })
-                cols_to_export = [c for c in ['FECHA','ID','NOMBRE','MOV','UBICACIÓN','SOLICITANTE','LÍNEA_USO', 'EVIDENCIA', 'USUARIO'] if c in df.columns]
+                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
