@@ -11,7 +11,7 @@ from pyzbar.pyzbar import decode
 import re
 import urllib.parse
 import io
-import unicodedata # <-- NUEVA LIBRERÍA PARA LIMPIAR TEXTOS
+import unicodedata 
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -31,12 +31,12 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- OPTIMIZACIÓN: CACHÉ DE INVENTARIO (EVITA ERROR ResourceExhausted) ---
+# --- OPTIMIZACIÓN: CACHÉ DE INVENTARIO ---
 @st.cache_data
 def obtener_inventario():
     datos = []
     try:
-        for col in ["materiales", "holders"]:
+        for col in ["MATERIALES", "HOLDERS"]:
             docs = db.collection(col).stream()
             for d in docs:
                 item = d.to_dict()
@@ -256,9 +256,34 @@ def buscar():
             else:
                 st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
+
+            # --- NUEVA FUNCIÓN: ACTUALIZAR FOTO RÁPIDA (SOLO PARA YAKO) ---
+            if st.session_state.user == "YAKO":
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
+                col_f1, col_f2 = st.columns([0.7, 0.3])
+                with col_f1:
+                    nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
+                with col_f2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
+                        if nueva_foto_url:
+                            with st.spinner("Guardando en la base de datos... / 저장 중..."):
+                                # Actualiza el campo "foto_url" en todas las transacciones de este item
+                                docs_update = db.collection(col_f).where("item", "==", id_f).stream()
+                                for doc in docs_update:
+                                    db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
+                                
+                                obtener_inventario.clear() # Limpia el caché para que se vea el cambio inmediato
+                                st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
+                                st.rerun()
+                        else:
+                            st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
+
         else:
             st.warning("No se encontraron resultados / 결과 없음")
 
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): 
         if st.session_state.user == "INVITADO":
             st.session_state.user = None
@@ -409,14 +434,12 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
-                # Asegurarnos de que las columnas vacías no tiren error al armar el Excel
                 for d in data:
                     d['nombre'] = d.get('nombre', 'SIN NOMBRE')
                     d['item'] = d.get('item', 'SIN ID')
                     
                 df = pd.DataFrame(data)
                 
-                # Rellenar columnas faltantes por si acaso hay datos muy viejos en la BD
                 for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
                     if col not in df.columns:
                         df[col] = ''
@@ -445,7 +468,6 @@ def admin():
                     df_in = pd.read_excel(arch, engine='openpyxl')
                     df_in = df_in.fillna('')
                     
-                    # --- FILTRO INTELIGENTE DE CABECERAS PARA IGNORAR TRADUCCIÓN ---
                     def limpiar_columna(col):
                         c = str(col).split('/')[0].strip().upper()
                         c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
