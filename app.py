@@ -36,12 +36,13 @@ db = firestore.client()
 def obtener_inventario():
     datos = []
     try:
-        for col in ["MATERIALES", "HOLDERS"]:
+        for col in ["materiales", "holders"]:
             docs = db.collection(col).stream()
             for d in docs:
                 item = d.to_dict()
                 item['cat_db'] = col
                 item['label'] = f"{str(item.get('nombre', '')).upper()} | {str(item.get('item', '')).upper()}"
+                item['doc_id'] = d.id # Necesario por si queremos borrar después
                 datos.append(item)
         return datos
     except Exception as e:
@@ -257,7 +258,6 @@ def buscar():
                 st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-            # --- NUEVA FUNCIÓN: ACTUALIZAR FOTO RÁPIDA (SOLO PARA YAKO) ---
             if st.session_state.user == "YAKO":
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
@@ -269,12 +269,11 @@ def buscar():
                     if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
                         if nueva_foto_url:
                             with st.spinner("Guardando en la base de datos... / 저장 중..."):
-                                # Actualiza el campo "foto_url" en todas las transacciones de este item
                                 docs_update = db.collection(col_f).where("item", "==", id_f).stream()
                                 for doc in docs_update:
                                     db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
                                 
-                                obtener_inventario.clear() # Limpia el caché para que se vea el cambio inmediato
+                                obtener_inventario.clear() 
                                 st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
                                 st.rerun()
                         else:
@@ -424,10 +423,30 @@ def admin():
             del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
             if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
                 if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
-                    ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
-                    for d in ds: db.collection(cdb).document(d.id).delete()
-                    obtener_inventario.clear() 
-                    st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
+                    # --- BARRA DE PROGRESO DE BORRADO AÑADIDA AQUÍ ---
+                    if del_id:
+                        docs_ref = db.collection(cdb).where("item", "==", del_id).stream()
+                    else:
+                        docs_ref = db.collection(cdb).stream()
+                        
+                    # Convertimos a lista para saber cuántos son en total
+                    docs_borrar = list(docs_ref)
+                    total_borrar = len(docs_borrar)
+                    
+                    if total_borrar == 0:
+                        st.warning("⚠️ No hay registros para borrar. / 삭제할 레코드가 없습니다.")
+                    else:
+                        barra_borrado = st.progress(0, text=f"🗑️ Iniciando borrado de {total_borrar} registros... / {total_borrar}개 레코드 삭제 시작...")
+                        
+                        for i, doc in enumerate(docs_borrar):
+                            db.collection(cdb).document(doc.id).delete()
+                            porcentaje_borrado = (i + 1) / total_borrar
+                            barra_borrado.progress(porcentaje_borrado, text=f"⏳ Borrando {i+1} de {total_borrar} registros... ({int(porcentaje_borrado * 100)}%)")
+                            
+                        barra_borrado.empty()
+                        obtener_inventario.clear() 
+                        st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros eliminados. / 삭제 완료: {total_borrar}개 레코드 삭제됨.")
+                        st.rerun()
                 
     with t2:
         ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
