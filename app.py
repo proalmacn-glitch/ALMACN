@@ -11,6 +11,7 @@ from pyzbar.pyzbar import decode
 import re
 import urllib.parse
 import io
+import unicodedata # <-- NUEVA LIBRERÍA PARA LIMPIAR TEXTOS
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -207,7 +208,6 @@ def buscar():
     busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
     
     if busqueda:
-        # Usamos el caché para no gastar lecturas de Firebase
         inventario_total = obtener_inventario()
         coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
         
@@ -215,7 +215,7 @@ def buscar():
             if len(coincidencias) > 1:
                 st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
                 
-            opciones = list(set([c['label'] for c in coincidencias])) # Eliminar duplicados en el selector
+            opciones = list(set([c['label'] for c in coincidencias])) 
             seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
             item = next(c for c in coincidencias if c['label'] == seleccion)
             
@@ -223,7 +223,6 @@ def buscar():
             nombre_item = item.get('nombre', '')
             st.markdown(f"<h2>{nombre_item}</h2>", unsafe_allow_html=True)
             
-            # Calculamos el total usando la RAM, sin gastar base de datos
             tot = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
             
             if tot <= 5:
@@ -289,17 +288,15 @@ def formulario():
     if busqueda_form:
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         inventario_total = obtener_inventario()
-        # Filtramos solo la categoría actual en la memoria RAM
+        
         coincidencias = [item for item in inventario_total if item['cat_db'] == cat and (termino_busqueda in str(item.get('nombre', '')).upper() or termino_busqueda in str(item.get('item', '')).upper())]
         
-        # Eliminar duplicados para el selector
         coincidencias_unicas = []
         vistos = set()
         for c in coincidencias:
             if c['label'] not in vistos:
                 vistos.add(c['label'])
                 coincidencias_unicas.append(c)
-                
         coincidencias = coincidencias_unicas
         
         if acc == "SALIDA":
@@ -375,7 +372,7 @@ def formulario():
                 "evidencia_url": url_foto_final,
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
-            obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL REGISTRAR
+            obtener_inventario.clear() 
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.session_state.scanned_id = "" 
@@ -404,7 +401,7 @@ def admin():
                 if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
                     ds = db.collection(cdb).where("item", "==", del_id).stream() if del_id else db.collection(cdb).stream()
                     for d in ds: db.collection(cdb).document(d.id).delete()
-                    obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL BORRAR
+                    obtener_inventario.clear() 
                     st.success("BORRADO COMPLETADO / 삭제 완료"); st.rerun()
                 
     with t2:
@@ -412,7 +409,19 @@ def admin():
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
-                df = pd.DataFrame(data).rename(columns={
+                # Asegurarnos de que las columnas vacías no tiren error al armar el Excel
+                for d in data:
+                    d['nombre'] = d.get('nombre', 'SIN NOMBRE')
+                    d['item'] = d.get('item', 'SIN ID')
+                    
+                df = pd.DataFrame(data)
+                
+                # Rellenar columnas faltantes por si acaso hay datos muy viejos en la BD
+                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
+                    if col not in df.columns:
+                        df[col] = ''
+                        
+                df = df.rename(columns={
                     'fecha': 'FECHA / 날짜',
                     'item': 'ID',
                     'nombre': 'NOMBRE / 이름',
@@ -436,6 +445,14 @@ def admin():
                     df_in = pd.read_excel(arch, engine='openpyxl')
                     df_in = df_in.fillna('')
                     
+                    # --- FILTRO INTELIGENTE DE CABECERAS PARA IGNORAR TRADUCCIÓN ---
+                    def limpiar_columna(col):
+                        c = str(col).split('/')[0].strip().upper()
+                        c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
+                        return c
+                        
+                    df_in.columns = [limpiar_columna(c) for c in df_in.columns]
+                    
                     if df_in.empty:
                         st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
                     else:
@@ -455,7 +472,7 @@ def admin():
                                 "nombre": str(f.get('NOMBRE','')).upper(),
                                 "item": item_id.upper(),
                                 "cantidad": cantidad_final,
-                                "ubicacion": str(f.get('UBICACIÓN','ALM')).upper(),
+                                "ubicacion": str(f.get('UBICACION','ALM')).upper(),
                                 "foto_url": str(f.get('FOTO','NO FOTO')),
                                 "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                 "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
@@ -464,7 +481,7 @@ def admin():
                             barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%)")
                         
                         barra_progreso.empty()
-                        obtener_inventario.clear() # <- LIMPIAMOS CACHÉ AL TERMINAR CARGA MASIVA
+                        obtener_inventario.clear() 
                         st.success("✅ CARGA MASIVA COMPLETADA AL 100% / 대량 로드 100% 완료")
                         st.balloons()
                 except Exception as e:
