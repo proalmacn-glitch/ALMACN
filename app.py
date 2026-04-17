@@ -299,12 +299,10 @@ def formulario():
         cam = st.camera_input("SCAN")
         if cam:
             res = decodificar_qr(cam)
-            if res:
-                # --- NUEVA LÓGICA DE QR: Extrae solo el ID para que auto-seleccione exacto ---
-                id_scaneado = res.split("/")[-1].strip() if "/" in res else res.strip()
-                if id_scaneado != st.session_state.scanned_id:
-                    st.session_state.scanned_id = id_scaneado
-                    st.rerun()
+            if res and res != st.session_state.scanned_id:
+                # Al leer el código, lo pone íntegro en la barra para que auto-seleccione
+                st.session_state.scanned_id = res
+                st.rerun()
             
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
     
@@ -313,7 +311,6 @@ def formulario():
     es_nuevo = False
     
     if busqueda_form:
-        # Busca el término exacto (que el QR ya nos puso limpio arriba)
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         inventario_total = obtener_inventario()
         
@@ -507,13 +504,14 @@ def admin():
                             if not item_id:
                                 continue
                                 
-                            # --- CORRECCIÓN BUG 14.0 -> 140 ---
-                            raw_cant = f.get('CANTIDAD', 0)
-                            try:
-                                cantidad_final = int(float(raw_cant))
-                            except:
-                                num_match = re.search(r'\d+', str(raw_cant))
-                                cantidad_final = int(num_match.group()) if num_match else 0
+                            # --- CORRECCIÓN DEFINITIVA DE LA CANTIDAD ---
+                            raw_cant = str(f.get('CANTIDAD', '0')).strip()
+                            # 1. Si Pandas lo leyó como decimal (ej. 14.0), cortamos en el punto y tomamos la parte entera (14)
+                            if '.' in raw_cant:
+                                raw_cant = raw_cant.split('.')[0]
+                            # 2. Si tiene letras (ej. "14 piezas"), quitamos las letras
+                            cant_limpia = re.sub(r'\D', '', raw_cant) 
+                            cantidad_final = int(cant_limpia) if cant_limpia else 0
 
                             db.collection(dest).add({
                                 "nombre": str(f.get('NOMBRE','')).upper(),
