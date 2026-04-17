@@ -72,7 +72,7 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    st.session_state.input_busqueda = "" # <-- Limpiamos la barra al entrar
+    st.session_state.scanned_id = "" # Limpiamos la memoria al entrar
     st.rerun()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
@@ -99,7 +99,7 @@ st.markdown("""
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
-if 'input_busqueda' not in st.session_state: st.session_state.input_busqueda = "" 
+if 'scanned_id' not in st.session_state: st.session_state.scanned_id = "" 
 
 # ================= VISTAS / 보기 =================
 
@@ -300,13 +300,18 @@ def formulario():
         if cam:
             res = decodificar_qr(cam)
             if res:
-                # --- SOLUCIÓN: Copia EXACTAMENTE el nombre/ID a la barra ---
+                # --- AUTO-INYECCIÓN EN LA MEMORIA ---
                 texto_qr_limpio = res.strip()
-                if st.session_state.input_busqueda != texto_qr_limpio:
-                    st.session_state.input_busqueda = texto_qr_limpio
+                if st.session_state.scanned_id != texto_qr_limpio:
+                    st.session_state.scanned_id = texto_qr_limpio
                     st.rerun()
             
-    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="input_busqueda").upper().strip()
+    # La barra absorbe directamente la memoria (scanned_id)
+    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
+    
+    # Sincronizamos la memoria si el usuario teclea o borra a mano
+    if busqueda_form != st.session_state.scanned_id:
+        st.session_state.scanned_id = busqueda_form
     
     cod_final = ""
     nombre_final = ""
@@ -325,14 +330,12 @@ def formulario():
                 nom = str(item.get('nombre', '')).upper()
                 idx = str(item.get('item', '')).upper()
                 
-                # Si el ID que leyó la cámara o escribió el usuario coincide EXACTAMENTE
                 if termino_busqueda == idx:
                     coincidencia_exacta = item
                     break 
                 elif termino_busqueda in nom or termino_busqueda in idx:
                     coincidencias.append(item)
         
-        # Si hubo un match perfecto, forzamos a que sea el único resultado disponible
         if coincidencia_exacta:
             coincidencias_unicas = [coincidencia_exacta]
         else:
@@ -424,13 +427,13 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
-            st.session_state.input_busqueda = "" 
+            st.session_state.scanned_id = "" # Limpiamos la memoria tras registrar
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.input_busqueda = "" 
+            st.session_state.scanned_id = "" 
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
