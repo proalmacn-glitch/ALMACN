@@ -59,20 +59,37 @@ def obtener_url_final(url):
             return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
     return url_limpia
 
+# --- LECTOR QR CON TRIPLE FILTRO DE VISIÓN ---
 def decodificar_qr(foto):
     try:
+        foto.seek(0) # Regresa el puntero por si se lee varias veces
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
+        
+        # Intento 1: Color original
         codigos = decode(img)
-        if codigos: return codigos[0].data.decode("utf-8").upper()
-    except: return None
+        
+        # Intento 2: Escala de grises (mejora contraste)
+        if not codigos:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            codigos = decode(gray)
+            
+        # Intento 3: Blanco y negro puro (Thresholding)
+        if not codigos:
+            _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+            codigos = decode(thresh)
+
+        if codigos: 
+            return codigos[0].data.decode("utf-8").upper()
+    except Exception as e: 
+        return None
     return None
 
 def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    st.session_state.scanned_id = "" # Limpiamos la memoria al entrar
+    st.session_state.busqueda_input = "" # Limpiamos la memoria al entrar
     st.rerun()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
@@ -99,7 +116,7 @@ st.markdown("""
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
-if 'scanned_id' not in st.session_state: st.session_state.scanned_id = "" 
+if 'busqueda_input' not in st.session_state: st.session_state.busqueda_input = "" 
 
 # ================= VISTAS / 보기 =================
 
@@ -300,18 +317,16 @@ def formulario():
         if cam:
             res = decodificar_qr(cam)
             if res:
-                # --- AUTO-INYECCIÓN EN LA MEMORIA ---
                 texto_qr_limpio = res.strip()
-                if st.session_state.scanned_id != texto_qr_limpio:
-                    st.session_state.scanned_id = texto_qr_limpio
+                # --- INYECCIÓN DIRECTA Y FORZADA A LA BARRA DE BÚSQUEDA ---
+                if st.session_state.get("busqueda_input", "") != texto_qr_limpio:
+                    st.session_state["busqueda_input"] = texto_qr_limpio
                     st.rerun()
+            else:
+                st.warning("⚠️ No se detectó un QR claro. Intenta acercarlo o mejorar la luz.")
             
-    # La barra absorbe directamente la memoria (scanned_id)
-    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
-    
-    # Sincronizamos la memoria si el usuario teclea o borra a mano
-    if busqueda_form != st.session_state.scanned_id:
-        st.session_state.scanned_id = busqueda_form
+    # El text_input ahora está anclado a la memoria por su 'key'
+    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
     
     cod_final = ""
     nombre_final = ""
@@ -427,13 +442,13 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
-            st.session_state.scanned_id = "" # Limpiamos la memoria tras registrar
+            st.session_state.busqueda_input = "" # Vaciamos barra
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.scanned_id = "" 
+            st.session_state.busqueda_input = "" # Vaciamos barra
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
