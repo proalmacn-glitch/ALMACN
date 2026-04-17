@@ -72,7 +72,7 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    st.session_state.input_busqueda = "" # <-- Limpiamos la barra al cambiar de menú
+    st.session_state.input_busqueda = "" # <-- Limpiamos la barra al entrar
     st.rerun()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
@@ -99,7 +99,7 @@ st.markdown("""
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
-if 'input_busqueda' not in st.session_state: st.session_state.input_busqueda = "" # <-- Anclaje de memoria
+if 'input_busqueda' not in st.session_state: st.session_state.input_busqueda = "" 
 
 # ================= VISTAS / 보기 =================
 
@@ -296,17 +296,16 @@ def formulario():
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
     with st.expander("📷 CÁMARA QR / QR 카메라"):
-        cam = st.camera_input("SCAN", key="qr_cam_input") # Key única para no chocar con evidencia
+        cam = st.camera_input("SCAN", key="qr_cam_input") 
         if cam:
             res = decodificar_qr(cam)
             if res:
-                # --- AUTO-RELLENO DIRECTO A LA MEMORIA DE LA BARRA ---
-                id_scaneado = res.split("/")[-1].strip() if "/" in res else res.strip()
-                if st.session_state.input_busqueda != id_scaneado:
-                    st.session_state.input_busqueda = id_scaneado
+                # --- SOLUCIÓN: Copia EXACTAMENTE el nombre/ID a la barra ---
+                texto_qr_limpio = res.strip()
+                if st.session_state.input_busqueda != texto_qr_limpio:
+                    st.session_state.input_busqueda = texto_qr_limpio
                     st.rerun()
             
-    # La barra ahora usa el session_state directamente con la "key", esto asegura que se auto-rellene
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="input_busqueda").upper().strip()
     
     cod_final = ""
@@ -320,24 +319,23 @@ def formulario():
         coincidencias = []
         coincidencia_exacta = None
         
-        # --- LÓGICA DE COINCIDENCIA EXACTA ---
+        # --- CEREBRO DE AUTO-SELECCIÓN ---
         for item in inventario_total:
             if item['cat_db'] == cat:
                 nom = str(item.get('nombre', '')).upper()
                 idx = str(item.get('item', '')).upper()
                 
-                # Si lo que escaneó/escribió es EXACTAMENTE igual al ID, lo atrapa y rompe la búsqueda.
+                # Si el ID que leyó la cámara o escribió el usuario coincide EXACTAMENTE
                 if termino_busqueda == idx:
                     coincidencia_exacta = item
                     break 
                 elif termino_busqueda in nom or termino_busqueda in idx:
                     coincidencias.append(item)
         
+        # Si hubo un match perfecto, forzamos a que sea el único resultado disponible
         if coincidencia_exacta:
-            # Si hubo un match perfecto (gracias al QR), forzamos a que sea el único resultado
             coincidencias_unicas = [coincidencia_exacta]
         else:
-            # Si no fue exacto, quitamos duplicados normales
             coincidencias_unicas = []
             vistos = set()
             for c in coincidencias:
@@ -350,7 +348,6 @@ def formulario():
         if acc == "SALIDA":
             if coincidencias:
                 if len(coincidencias) == 1:
-                    # AQUÍ ESTÁ LA MAGIA: Al ser 1 solo (por el QR), se auto-selecciona de golpe.
                     cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
                     st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                 else:
@@ -427,7 +424,7 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
-            st.session_state.input_busqueda = "" # Limpiamos la barra tras registrar
+            st.session_state.input_busqueda = "" 
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.rerun() 
