@@ -50,37 +50,44 @@ def obtener_inventario():
 
 # --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
 def obtener_url_final(url):
-    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0"]:
+    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0", ""]:
         return None
     url_limpia = str(url).strip()
     if "drive.google.com" in url_limpia:
         match = re.search(r'(?:id=|d/|file/d/)([-\w]{25,})', url_limpia)
         if match:
             return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
+    
+    if not url_limpia.startswith("http"):
+        return None
+        
     return url_limpia
 
-# --- LECTOR QR CON TRIPLE FILTRO DE VISIÓN ---
+# --- MOTOR DUAL DE ESCANEO DE QR ---
 def decodificar_qr(foto):
     try:
-        foto.seek(0) # Regresa el puntero por si se lee varias veces
+        foto.seek(0)
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        # Intento 1: Color original
+        # CEREBRO 1: pyzbar
         codigos = decode(img)
-        
-        # Intento 2: Escala de grises (mejora contraste)
-        if not codigos:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            codigos = decode(gray)
-            
-        # Intento 3: Blanco y negro puro (Thresholding)
-        if not codigos:
-            _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-            codigos = decode(thresh)
-
         if codigos: 
             return codigos[0].data.decode("utf-8").upper()
+            
+        # CEREBRO 2: OpenCV Nativo
+        detector = cv2.QRCodeDetector()
+        data, bbox, _ = detector.detectAndDecode(img)
+        if data:
+            return str(data).upper()
+            
+        # CEREBRO 3: Filtro de contraste extremo
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+        codigos = decode(thresh)
+        if codigos: 
+            return codigos[0].data.decode("utf-8").upper()
+
     except Exception as e: 
         return None
     return None
@@ -89,7 +96,7 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    st.session_state.busqueda_input = "" # Limpiamos la memoria al entrar
+    st.session_state.busqueda_input = "" 
     st.rerun()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
@@ -318,14 +325,12 @@ def formulario():
             res = decodificar_qr(cam)
             if res:
                 texto_qr_limpio = res.strip()
-                # --- INYECCIÓN DIRECTA Y FORZADA A LA BARRA DE BÚSQUEDA ---
                 if st.session_state.get("busqueda_input", "") != texto_qr_limpio:
                     st.session_state["busqueda_input"] = texto_qr_limpio
                     st.rerun()
             else:
-                st.warning("⚠️ No se detectó un QR claro. Intenta acercarlo o mejorar la luz.")
+                st.warning("⚠️ No se detectó un QR claro. Intenta acercarlo, quitar reflejos o mejorar la luz.")
             
-    # El text_input ahora está anclado a la memoria por su 'key'
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
     
     cod_final = ""
@@ -339,7 +344,6 @@ def formulario():
         coincidencias = []
         coincidencia_exacta = None
         
-        # --- CEREBRO DE AUTO-SELECCIÓN ---
         for item in inventario_total:
             if item['cat_db'] == cat:
                 nom = str(item.get('nombre', '')).upper()
@@ -442,13 +446,13 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
-            st.session_state.busqueda_input = "" # Vaciamos barra
+            st.session_state.busqueda_input = "" 
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.busqueda_input = "" # Vaciamos barra
+            st.session_state.busqueda_input = "" 
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
