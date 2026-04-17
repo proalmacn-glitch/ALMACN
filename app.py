@@ -42,7 +42,7 @@ def obtener_inventario():
                 item = d.to_dict()
                 item['cat_db'] = col
                 item['label'] = f"{str(item.get('nombre', '')).upper()} | {str(item.get('item', '')).upper()}"
-                item['doc_id'] = d.id # Necesario por si queremos borrar después
+                item['doc_id'] = d.id 
                 datos.append(item)
         return datos
     except Exception as e:
@@ -299,9 +299,12 @@ def formulario():
         cam = st.camera_input("SCAN")
         if cam:
             res = decodificar_qr(cam)
-            if res and res != st.session_state.scanned_id:
-                st.session_state.scanned_id = res
-                st.rerun()
+            if res:
+                # --- NUEVA LÓGICA DE QR: Extrae solo el ID para que auto-seleccione exacto ---
+                id_scaneado = res.split("/")[-1].strip() if "/" in res else res.strip()
+                if id_scaneado != st.session_state.scanned_id:
+                    st.session_state.scanned_id = id_scaneado
+                    st.rerun()
             
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
     
@@ -310,6 +313,7 @@ def formulario():
     es_nuevo = False
     
     if busqueda_form:
+        # Busca el término exacto (que el QR ya nos puso limpio arriba)
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         inventario_total = obtener_inventario()
         
@@ -423,13 +427,11 @@ def admin():
             del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
             if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
                 if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
-                    # --- BARRA DE PROGRESO DE BORRADO AÑADIDA AQUÍ ---
                     if del_id:
                         docs_ref = db.collection(cdb).where("item", "==", del_id).stream()
                     else:
                         docs_ref = db.collection(cdb).stream()
                         
-                    # Convertimos a lista para saber cuántos son en total
                     docs_borrar = list(docs_ref)
                     total_borrar = len(docs_borrar)
                     
@@ -505,9 +507,13 @@ def admin():
                             if not item_id:
                                 continue
                                 
-                            raw_cant = str(f.get('CANTIDAD', '0'))
-                            cant_limpia = re.sub(r'\D', '', raw_cant) 
-                            cantidad_final = int(cant_limpia) if cant_limpia else 0
+                            # --- CORRECCIÓN BUG 14.0 -> 140 ---
+                            raw_cant = f.get('CANTIDAD', 0)
+                            try:
+                                cantidad_final = int(float(raw_cant))
+                            except:
+                                num_match = re.search(r'\d+', str(raw_cant))
+                                cantidad_final = int(num_match.group()) if num_match else 0
 
                             db.collection(dest).add({
                                 "nombre": str(f.get('NOMBRE','')).upper(),
