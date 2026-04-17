@@ -72,7 +72,7 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    st.session_state.scanned_id = ""
+    st.session_state.input_busqueda = "" # <-- Limpiamos la barra al cambiar de menú
     st.rerun()
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
@@ -99,7 +99,7 @@ st.markdown("""
 
 if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
-if 'scanned_id' not in st.session_state: st.session_state.scanned_id = ""
+if 'input_busqueda' not in st.session_state: st.session_state.input_busqueda = "" # <-- Anclaje de memoria
 
 # ================= VISTAS / 보기 =================
 
@@ -296,15 +296,18 @@ def formulario():
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
     with st.expander("📷 CÁMARA QR / QR 카메라"):
-        cam = st.camera_input("SCAN")
+        cam = st.camera_input("SCAN", key="qr_cam_input") # Key única para no chocar con evidencia
         if cam:
             res = decodificar_qr(cam)
-            if res and res != st.session_state.scanned_id:
-                # Al leer el código, lo pone íntegro en la barra para que auto-seleccione
-                st.session_state.scanned_id = res
-                st.rerun()
+            if res:
+                # --- AUTO-RELLENO DIRECTO A LA MEMORIA DE LA BARRA ---
+                id_scaneado = res.split("/")[-1].strip() if "/" in res else res.strip()
+                if st.session_state.input_busqueda != id_scaneado:
+                    st.session_state.input_busqueda = id_scaneado
+                    st.rerun()
             
-    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", value=st.session_state.scanned_id).upper().strip()
+    # La barra ahora usa el session_state directamente con la "key", esto asegura que se auto-rellene
+    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="input_busqueda").upper().strip()
     
     cod_final = ""
     nombre_final = ""
@@ -314,19 +317,40 @@ def formulario():
         termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
         inventario_total = obtener_inventario()
         
-        coincidencias = [item for item in inventario_total if item['cat_db'] == cat and (termino_busqueda in str(item.get('nombre', '')).upper() or termino_busqueda in str(item.get('item', '')).upper())]
+        coincidencias = []
+        coincidencia_exacta = None
         
-        coincidencias_unicas = []
-        vistos = set()
-        for c in coincidencias:
-            if c['label'] not in vistos:
-                vistos.add(c['label'])
-                coincidencias_unicas.append(c)
+        # --- LÓGICA DE COINCIDENCIA EXACTA ---
+        for item in inventario_total:
+            if item['cat_db'] == cat:
+                nom = str(item.get('nombre', '')).upper()
+                idx = str(item.get('item', '')).upper()
+                
+                # Si lo que escaneó/escribió es EXACTAMENTE igual al ID, lo atrapa y rompe la búsqueda.
+                if termino_busqueda == idx:
+                    coincidencia_exacta = item
+                    break 
+                elif termino_busqueda in nom or termino_busqueda in idx:
+                    coincidencias.append(item)
+        
+        if coincidencia_exacta:
+            # Si hubo un match perfecto (gracias al QR), forzamos a que sea el único resultado
+            coincidencias_unicas = [coincidencia_exacta]
+        else:
+            # Si no fue exacto, quitamos duplicados normales
+            coincidencias_unicas = []
+            vistos = set()
+            for c in coincidencias:
+                if c['label'] not in vistos:
+                    vistos.add(c['label'])
+                    coincidencias_unicas.append(c)
+                    
         coincidencias = coincidencias_unicas
         
         if acc == "SALIDA":
             if coincidencias:
                 if len(coincidencias) == 1:
+                    # AQUÍ ESTÁ LA MAGIA: Al ser 1 solo (por el QR), se auto-selecciona de golpe.
                     cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
                     st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                 else:
@@ -338,9 +362,14 @@ def formulario():
                 st.error("⚠️ MATERIAL NO ENCONTRADO.")
         else: # ENTRADA
             if coincidencias:
-                opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                if len(coincidencias) == 1 and coincidencia_exacta:
+                    opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                else:
+                    opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                    
                 seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
-                if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": es_nuevo = True
+                if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": 
+                    es_nuevo = True
                 else:
                     item_sel = next(c for c in coincidencias if c['label'] == seleccion)
                     cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
@@ -364,7 +393,7 @@ def formulario():
         linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
         
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
-            foto_evidencia = st.camera_input("FOTO EVIDENCIA")
+            foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
             
         ubi = "SALIDA"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
@@ -398,12 +427,13 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
+            st.session_state.input_busqueda = "" # Limpiamos la barra tras registrar
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
-            st.session_state.scanned_id = "" 
+            st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.scanned_id = "" 
+            st.session_state.input_busqueda = "" 
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
@@ -504,12 +534,9 @@ def admin():
                             if not item_id:
                                 continue
                                 
-                            # --- CORRECCIÓN DEFINITIVA DE LA CANTIDAD ---
                             raw_cant = str(f.get('CANTIDAD', '0')).strip()
-                            # 1. Si Pandas lo leyó como decimal (ej. 14.0), cortamos en el punto y tomamos la parte entera (14)
                             if '.' in raw_cant:
                                 raw_cant = raw_cant.split('.')[0]
-                            # 2. Si tiene letras (ej. "14 piezas"), quitamos las letras
                             cant_limpia = re.sub(r'\D', '', raw_cant) 
                             cantidad_final = int(cant_limpia) if cant_limpia else 0
 
