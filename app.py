@@ -63,22 +63,25 @@ def obtener_url_final(url):
         
     return url_limpia
 
-# --- MOTOR DUAL DE ESCANEO DE QR --- (se mantiene igual)
+# --- MOTOR DUAL DE ESCANEO DE QR ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
+        # CEREBRO 1: pyzbar
         codigos = decode(img)
         if codigos: 
             return codigos[0].data.decode("utf-8").upper()
             
+        # CEREBRO 2: OpenCV Nativo
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         if data:
             return str(data).upper()
             
+        # CEREBRO 3: Filtro de contraste extremo
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
         codigos = decode(thresh)
@@ -115,50 +118,6 @@ st.markdown("""
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
-    
-    /* Estilos para el mapa de racks */
-    .rack-map {
-        display: grid;
-        grid-template-columns: repeat(6, 1fr);
-        gap: 8px;
-        background-color: #1a1a1a;
-        padding: 20px;
-        border-radius: 15px;
-        margin: 20px 0;
-        justify-items: center;
-        align-items: center;
-    }
-    .rack {
-        background-color: #8B0000;
-        color: white;
-        font-weight: bold;
-        text-align: center;
-        padding: 12px 0;
-        border-radius: 8px;
-        width: 100%;
-        transition: 0.2s;
-        border: 1px solid #444;
-    }
-    .rack-highlight {
-        background-color: #2E7D32;
-        box-shadow: 0 0 10px #4CAF50;
-    }
-    /* Posiciones específicas para imitar el diseño original */
-    .rack-g1 { grid-column: 2 / span 1; grid-row: 1; }
-    .rack-g2 { grid-column: 3 / span 1; grid-row: 1; }
-    .rack-g3 { grid-column: 4 / span 1; grid-row: 1; }
-    .rack-h2 { grid-column: 1 / span 1; grid-row: 2; }
-    .rack-h1 { grid-column: 1 / span 1; grid-row: 3; }
-    .rack-i1 { grid-column: 2 / span 1; grid-row: 2; }
-    .rack-i2 { grid-column: 3 / span 1; grid-row: 2; }
-    .rack-k1 { grid-column: 2 / span 1; grid-row: 3; }
-    .rack-k2 { grid-column: 3 / span 1; grid-row: 3; }
-    .rack-f1 { grid-column: 5 / span 1; grid-row: 1; }
-    .rack-f2 { grid-column: 5 / span 1; grid-row: 2; }
-    .rack-f3 { grid-column: 5 / span 1; grid-row: 3; }
-    .rack-f4 { grid-column: 5 / span 1; grid-row: 4; }
-    .rack-f5 { grid-column: 5 / span 1; grid-row: 5; }
-    .rack-f6 { grid-column: 5 / span 1; grid-row: 6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -215,7 +174,6 @@ def login():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def cambiar_datos():
-    # (sin cambios)
     st.markdown("<h1>ACTUALIZAR DATOS / 데이터 업데이트</h1>", unsafe_allow_html=True)
     st.info("⚠️ Para continuar, por favor personaliza tu usuario y contraseña. / 계속하려면 사용자 이름과 비밀번호를 설정하세요.")
     
@@ -248,7 +206,6 @@ def cambiar_datos():
                 st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
 def menu():
-    # (sin cambios)
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
     usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
     st.info(f"HOLA / 안녕하세요: {usuario_actual}")
@@ -272,28 +229,18 @@ def menu():
         if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
-    st.header("BUSCAR MATERIAL / 재료 검색 (con mapa de racks)")
+    st.header("BUSCAR MATERIAL / 재료 검색 (con mapa de racks estilo original)")
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
-    # ---- Mapa de racks fijo (siempre visible) ----
-    st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
-    # Definir todos los racks con su clase CSS y nombre
-    racks_info = {
-        "G1": "rack-g1", "G2": "rack-g2", "G3": "rack-g3",
-        "H1": "rack-h1", "H2": "rack-h2",
-        "I1": "rack-i1", "I2": "rack-i2",
-        "K1": "rack-k1", "K2": "rack-k2",
-        "F1": "rack-f1", "F2": "rack-f2", "F3": "rack-f3",
-        "F4": "rack-f4", "F5": "rack-f5", "F6": "rack-f6"
-    }
-    
-    rack_highlight = None  # almacenará el rack a resaltar (si se encuentra)
+    # --- Variables que se llenarán si hay búsqueda ---
     item_seleccionado = None
     stock_total = 0
     foto_url = None
     nombre_item = ""
     id_f = ""
     col_f = ""
+    rack_highlight = None
+    ubicacion_raw = ""
     
     if busqueda:
         inventario_total = obtener_inventario()
@@ -311,41 +258,64 @@ def buscar():
             col_f = item_seleccionado['cat_db']
             nombre_item = item_seleccionado.get('nombre', '')
             ubicacion_raw = item_seleccionado.get('ubicacion', '')
-            # Extraer rack de la ubicación (ej: "G1-3" -> "G1", "F2" -> "F2")
+            # Extraer rack (ej: "G1-3" -> "G1", "F2" -> "F2")
             rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
             rack_highlight = rack_match.group(1) if rack_match else None
             
             stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
             foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
-            
-            # Mostrar detalles debajo del mapa
-            st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
-            if stock_total <= 5:
-                st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
-            
-            col1, col2 = st.columns(2)
-            col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
-            col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         else:
             st.warning("No se encontraron resultados / 결과 없음")
     
-    # ---- Construir el mapa de racks con HTML/CSS ----
-    # Definir el orden y posiciones de los racks en el grid
-    rack_order = ["G1", "G2", "G3", "", "F1", "F2", "H2", "I1", "I2", "", "F3", "F4", "H1", "K1", "K2", "", "F5", "F6"]
-    # Creamos una lista de 18 celdas (3 filas x 6 columnas) pero usamos grid automático con las clases
-    html_map = '<div class="rack-map">'
-    for rack in rack_order:
-        if rack == "":
-            html_map += '<div class="rack" style="background-color:transparent; border:none;"></div>'
-        else:
-            highlight_class = "rack-highlight" if (rack_highlight and rack == rack_highlight) else ""
-            html_map += f'<div class="rack {racks_info.get(rack, '')} {highlight_class}">{rack}</div>'
-    html_map += '</div>'
+    # --- MAPA DE RACKS ESTILO IMAGEN (posiciones absolutas, texto rotado) ---
+    st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
     
-    st.markdown(html_map, unsafe_allow_html=True)
+    # Coordenadas exactas basadas en el diseño Tkinter original
+    racks = {
+        "G1": {"left": 110, "top": 20, "width": 120, "height": 50, "angle": 90},
+        "G2": {"left": 230, "top": 20, "width": 120, "height": 50, "angle": 90},
+        "G3": {"left": 350, "top": 20, "width": 120, "height": 50, "angle": 90},
+        "H2": {"left": 40, "top": 20, "width": 60, "height": 100, "angle": 0},
+        "H1": {"left": 40, "top": 120, "width": 60, "height": 100, "angle": 0},
+        "I1": {"left": 110, "top": 100, "width": 120, "height": 50, "angle": 90},
+        "I2": {"left": 230, "top": 100, "width": 120, "height": 50, "angle": 90},
+        "K1": {"left": 110, "top": 160, "width": 120, "height": 50, "angle": 90},
+        "K2": {"left": 230, "top": 160, "width": 120, "height": 50, "angle": 90},
+        "F1": {"left": 410, "top": 85, "width": 60, "height": 70, "angle": 0},
+        "F2": {"left": 410, "top": 155, "width": 60, "height": 70, "angle": 0},
+        "F3": {"left": 410, "top": 225, "width": 60, "height": 70, "angle": 0},
+        "F4": {"left": 410, "top": 295, "width": 60, "height": 70, "angle": 0},
+        "F5": {"left": 410, "top": 365, "width": 60, "height": 70, "angle": 0},
+        "F6": {"left": 410, "top": 435, "width": 60, "height": 70, "angle": 0}
+    }
     
-    # ---- Si hay un item seleccionado, mostrar QR y foto ----
+    # Construir el HTML/CSS con posiciones absolutas
+    map_html = f"""
+    <div style="position: relative; width: 530px; height: 550px; margin: 0 auto; background-color: black; border: 2px solid #333; border-radius: 10px;">
+    """
+    for name, pos in racks.items():
+        bg_color = "#8FC360" if (rack_highlight and name == rack_highlight) else "#8B0000"
+        transform_style = f"transform: rotate({pos['angle']}deg);" if pos['angle'] != 0 else ""
+        map_html += f"""
+        <div style="position: absolute; left: {pos['left']}px; top: {pos['top']}px; width: {pos['width']}px; height: {pos['height']}px;
+                    background-color: {bg_color}; border: 2px solid white; border-radius: 6px;
+                    display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+            <span style="color: white; font-weight: bold; font-size: 18px; {transform_style} text-shadow: 1px 1px 0px black;">{name}</span>
+        </div>
+        """
+    map_html += "</div>"
+    st.markdown(map_html, unsafe_allow_html=True)
+    
+    # --- Mostrar detalles del material si se encontró ---
     if item_seleccionado:
+        st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
+        if stock_total <= 5:
+            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
+        
+        col1, col2 = st.columns(2)
+        col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
+        col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
+        
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
@@ -367,7 +337,7 @@ def buscar():
             st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Opción para YAKO: actualizar foto vía URL o subir archivo
+        # Solo YAKO puede actualizar foto
         if st.session_state.user == "YAKO":
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
@@ -389,7 +359,6 @@ def buscar():
                         st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    # Botón volver
     if st.button("VOLVER / 돌아가기"): 
         if st.session_state.user == "INVITADO":
             st.session_state.user = None
@@ -399,7 +368,6 @@ def buscar():
         st.rerun()
 
 def formulario():
-    # (sin cambios)
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
@@ -541,7 +509,6 @@ def formulario():
             st.rerun()
 
 def admin():
-    # (sin cambios, se mantiene exactamente igual)
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
     
     es_yako = (st.session_state.user == "YAKO")
