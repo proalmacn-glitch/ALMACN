@@ -7,7 +7,6 @@ import os
 import random
 import numpy as np
 import cv2
-from pyzbar.pyzbar import decode
 import re
 import urllib.parse
 import io
@@ -63,31 +62,26 @@ def obtener_url_final(url):
         
     return url_limpia
 
-# --- MOTOR DUAL DE ESCANEO DE QR ---
+# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, SIN PYZBAR) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        # CEREBRO 1: pyzbar
-        codigos = decode(img)
-        if codigos: 
-            return codigos[0].data.decode("utf-8").upper()
-            
-        # CEREBRO 2: OpenCV Nativo
+        # Detector QR nativo de OpenCV
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         if data:
             return str(data).upper()
-            
-        # CEREBRO 3: Filtro de contraste extremo
+        
+        # Mejorar contraste con umbralización Otsu
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        codigos = decode(thresh)
-        if codigos: 
-            return codigos[0].data.decode("utf-8").upper()
-
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        data2, _, _ = detector.detectAndDecode(thresh)
+        if data2:
+            return str(data2).upper()
+            
     except Exception as e: 
         return None
     return None
