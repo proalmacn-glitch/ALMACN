@@ -63,25 +63,22 @@ def obtener_url_final(url):
         
     return url_limpia
 
-# --- MOTOR DUAL DE ESCANEO DE QR ---
+# --- MOTOR DUAL DE ESCANEO DE QR --- (se mantiene igual)
 def decodificar_qr(foto):
     try:
         foto.seek(0)
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        # CEREBRO 1: pyzbar
         codigos = decode(img)
         if codigos: 
             return codigos[0].data.decode("utf-8").upper()
             
-        # CEREBRO 2: OpenCV Nativo
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         if data:
             return str(data).upper()
             
-        # CEREBRO 3: Filtro de contraste extremo
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
         codigos = decode(thresh)
@@ -118,6 +115,50 @@ st.markdown("""
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
+    
+    /* Estilos para el mapa de racks */
+    .rack-map {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 8px;
+        background-color: #1a1a1a;
+        padding: 20px;
+        border-radius: 15px;
+        margin: 20px 0;
+        justify-items: center;
+        align-items: center;
+    }
+    .rack {
+        background-color: #8B0000;
+        color: white;
+        font-weight: bold;
+        text-align: center;
+        padding: 12px 0;
+        border-radius: 8px;
+        width: 100%;
+        transition: 0.2s;
+        border: 1px solid #444;
+    }
+    .rack-highlight {
+        background-color: #2E7D32;
+        box-shadow: 0 0 10px #4CAF50;
+    }
+    /* Posiciones específicas para imitar el diseño original */
+    .rack-g1 { grid-column: 2 / span 1; grid-row: 1; }
+    .rack-g2 { grid-column: 3 / span 1; grid-row: 1; }
+    .rack-g3 { grid-column: 4 / span 1; grid-row: 1; }
+    .rack-h2 { grid-column: 1 / span 1; grid-row: 2; }
+    .rack-h1 { grid-column: 1 / span 1; grid-row: 3; }
+    .rack-i1 { grid-column: 2 / span 1; grid-row: 2; }
+    .rack-i2 { grid-column: 3 / span 1; grid-row: 2; }
+    .rack-k1 { grid-column: 2 / span 1; grid-row: 3; }
+    .rack-k2 { grid-column: 3 / span 1; grid-row: 3; }
+    .rack-f1 { grid-column: 5 / span 1; grid-row: 1; }
+    .rack-f2 { grid-column: 5 / span 1; grid-row: 2; }
+    .rack-f3 { grid-column: 5 / span 1; grid-row: 3; }
+    .rack-f4 { grid-column: 5 / span 1; grid-row: 4; }
+    .rack-f5 { grid-column: 5 / span 1; grid-row: 5; }
+    .rack-f6 { grid-column: 5 / span 1; grid-row: 6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -174,6 +215,7 @@ def login():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def cambiar_datos():
+    # (sin cambios)
     st.markdown("<h1>ACTUALIZAR DATOS / 데이터 업데이트</h1>", unsafe_allow_html=True)
     st.info("⚠️ Para continuar, por favor personaliza tu usuario y contraseña. / 계속하려면 사용자 이름과 비밀번호를 설정하세요.")
     
@@ -206,6 +248,7 @@ def cambiar_datos():
                 st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
 def menu():
+    # (sin cambios)
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
     usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
     st.info(f"HOLA / 안녕하세요: {usuario_actual}")
@@ -229,8 +272,28 @@ def menu():
         if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
-    st.header("BUSCAR / 검색")
-    busqueda = st.text_input("ESCRIBE NOMBRE O ID / ID o 이름 입력").upper().strip()
+    st.header("BUSCAR MATERIAL / 재료 검색 (con mapa de racks)")
+    busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+    
+    # ---- Mapa de racks fijo (siempre visible) ----
+    st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
+    # Definir todos los racks con su clase CSS y nombre
+    racks_info = {
+        "G1": "rack-g1", "G2": "rack-g2", "G3": "rack-g3",
+        "H1": "rack-h1", "H2": "rack-h2",
+        "I1": "rack-i1", "I2": "rack-i2",
+        "K1": "rack-k1", "K2": "rack-k2",
+        "F1": "rack-f1", "F2": "rack-f2", "F3": "rack-f3",
+        "F4": "rack-f4", "F5": "rack-f5", "F6": "rack-f6"
+    }
+    
+    rack_highlight = None  # almacenará el rack a resaltar (si se encuentra)
+    item_seleccionado = None
+    stock_total = 0
+    foto_url = None
+    nombre_item = ""
+    id_f = ""
+    col_f = ""
     
     if busqueda:
         inventario_total = obtener_inventario()
@@ -242,71 +305,91 @@ def buscar():
                 
             opciones = list(set([c['label'] for c in coincidencias])) 
             seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
-            item = next(c for c in coincidencias if c['label'] == seleccion)
+            item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
             
-            id_f, col_f = item.get('item'), item['cat_db']
-            nombre_item = item.get('nombre', '')
-            st.markdown(f"<h2>{nombre_item}</h2>", unsafe_allow_html=True)
+            id_f = item_seleccionado.get('item')
+            col_f = item_seleccionado['cat_db']
+            nombre_item = item_seleccionado.get('nombre', '')
+            ubicacion_raw = item_seleccionado.get('ubicacion', '')
+            # Extraer rack de la ubicación (ej: "G1-3" -> "G1", "F2" -> "F2")
+            rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
+            rack_highlight = rack_match.group(1) if rack_match else None
             
-            tot = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
+            stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
+            foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
             
-            if tot <= 5:
-                st.warning(f"⚠️ STOCK BAJO: Quedan {tot} unidades / 재고 부족: {tot}개 남음")
+            # Mostrar detalles debajo del mapa
+            st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
+            if stock_total <= 5:
+                st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
             
-            c1, c2 = st.columns(2)
-            c1.metric("STOCK ACTUAL / 재고", max(0, tot))
-            c2.metric("UBICACIÓN / 위치", item.get('ubicacion', '---'))
-            
-            st.divider()
-            st.markdown('<div class="media-container">', unsafe_allow_html=True)
-            
-            nombre_id_qr = f"{nombre_item}/{id_f}"
-            nombre_codificado = urllib.parse.quote(nombre_id_qr)
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
-            
-            st.markdown(f'''
-                <div class="qr-left">
-                    <img src="{qr_url}" width="150">
-                    <div style="margin-top:5px; font-size:12px; color:gray;">QR {nombre_id_qr}</div>
-                </div>
-            ''', unsafe_allow_html=True)
-            
-            foto_url = obtener_url_final(item.get('foto_url', ''))
-            if foto_url:
-                st.markdown(f'''
-                    <div class="photo-right">
-                        <img src="{foto_url}" style="width:100%; border-radius:15px;">
-                    </div>
-                ''', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            if st.session_state.user == "YAKO":
-                st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
-                col_f1, col_f2 = st.columns([0.7, 0.3])
-                with col_f1:
-                    nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
-                with col_f2:
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
-                        if nueva_foto_url:
-                            with st.spinner("Guardando en la base de datos... / 저장 중..."):
-                                docs_update = db.collection(col_f).where("item", "==", id_f).stream()
-                                for doc in docs_update:
-                                    db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
-                                
-                                obtener_inventario.clear() 
-                                st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
-                                st.rerun()
-                        else:
-                            st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
-
+            col1, col2 = st.columns(2)
+            col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
+            col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         else:
             st.warning("No se encontraron resultados / 결과 없음")
+    
+    # ---- Construir el mapa de racks con HTML/CSS ----
+    # Definir el orden y posiciones de los racks en el grid
+    rack_order = ["G1", "G2", "G3", "", "F1", "F2", "H2", "I1", "I2", "", "F3", "F4", "H1", "K1", "K2", "", "F5", "F6"]
+    # Creamos una lista de 18 celdas (3 filas x 6 columnas) pero usamos grid automático con las clases
+    html_map = '<div class="rack-map">'
+    for rack in rack_order:
+        if rack == "":
+            html_map += '<div class="rack" style="background-color:transparent; border:none;"></div>'
+        else:
+            highlight_class = "rack-highlight" if (rack_highlight and rack == rack_highlight) else ""
+            html_map += f'<div class="rack {racks_info.get(rack, '')} {highlight_class}">{rack}</div>'
+    html_map += '</div>'
+    
+    st.markdown(html_map, unsafe_allow_html=True)
+    
+    # ---- Si hay un item seleccionado, mostrar QR y foto ----
+    if item_seleccionado:
+        st.divider()
+        st.markdown('<div class="media-container">', unsafe_allow_html=True)
+        
+        # Generar QR
+        nombre_id_qr = f"{nombre_item}/{id_f}"
+        nombre_codificado = urllib.parse.quote(nombre_id_qr)
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
+        st.markdown(f'''
+            <div class="qr-left">
+                <img src="{qr_url}" width="150">
+                <div style="margin-top:5px; font-size:12px; color:gray;">QR {nombre_id_qr}</div>
+            </div>
+        ''', unsafe_allow_html=True)
+        
+        # Foto
+        if foto_url:
+            st.markdown(f'<div class="photo-right"><img src="{foto_url}" style="width:100%; border-radius:15px;"></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
+        # Opción para YAKO: actualizar foto vía URL o subir archivo
+        if st.session_state.user == "YAKO":
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
+            col_f1, col_f2 = st.columns([0.7, 0.3])
+            with col_f1:
+                nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
+            with col_f2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
+                    if nueva_foto_url:
+                        with st.spinner("Guardando en la base de datos... / 저장 중..."):
+                            docs_update = db.collection(col_f).where("item", "==", id_f).stream()
+                            for doc in docs_update:
+                                db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
+                            obtener_inventario.clear() 
+                            st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
+    
     st.markdown("<br>", unsafe_allow_html=True)
+    # Botón volver
     if st.button("VOLVER / 돌아가기"): 
         if st.session_state.user == "INVITADO":
             st.session_state.user = None
@@ -316,6 +399,7 @@ def buscar():
         st.rerun()
 
 def formulario():
+    # (sin cambios)
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
@@ -457,6 +541,7 @@ def formulario():
             st.rerun()
 
 def admin():
+    # (sin cambios, se mantiene exactamente igual)
     st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
     
     es_yako = (st.session_state.user == "YAKO")
