@@ -90,7 +90,7 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    # Limpiar de forma segura (sin causar error)
+    # Limpiar de forma segura
     st.session_state.pop('busqueda_input', None)
     st.rerun()
 
@@ -223,8 +223,9 @@ def menu():
         if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
         if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
+# ================= FUNCIÓN BUSCAR MODIFICADA =================
 def buscar():
-    st.header("BUSCAR MATERIAL / 재료 검색 (con mapa de racks)")
+    st.header("BUSCAR MATERIAL / 재료 검색")
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
     # --- Variables que se llenarán si hay búsqueda ---
@@ -233,7 +234,7 @@ def buscar():
     foto_url = None
     nombre_item = ""
     id_f = ""
-    col_f = ""
+    col_f = ""  # "materiales" o "holders"
     rack_highlight = None
     ubicacion_raw = ""
     
@@ -253,88 +254,91 @@ def buscar():
             col_f = item_seleccionado['cat_db']
             nombre_item = item_seleccionado.get('nombre', '')
             ubicacion_raw = item_seleccionado.get('ubicacion', '')
-            # Extraer rack (ej: "G1-3" -> "G1", "F2" -> "F2")
-            rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
-            rack_highlight = rack_match.group(1) if rack_match else None
+            
+            # Solo si es holder, extraemos el rack para resaltar
+            if col_f == "holders":
+                rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
+                rack_highlight = rack_match.group(1) if rack_match else None
             
             stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
             foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
         else:
             st.warning("No se encontraron resultados / 결과 없음")
     
-    # --- MAPA DE RACKS ESTILO IMAGEN (posiciones absolutas, texto rotado) ---
-    st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
+    # --- MAPA DE RACKS SOLO PARA HOLDERS ---
+    if item_seleccionado and col_f == "holders":
+        st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
+        
+        def rack_color(name):
+            return "#8FC360" if (rack_highlight and name == rack_highlight) else "#8B0000"
+        
+        map_html = f'''
+        <div style="position: relative; width: 530px; height: 550px; margin: 0 auto; background-color: black; border: 2px solid #333; border-radius: 10px;">
+            <!-- G1 -->
+            <div style="position: absolute; left: 110px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G1</span>
+            </div>
+            <!-- G2 -->
+            <div style="position: absolute; left: 230px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G2</span>
+            </div>
+            <!-- G3 -->
+            <div style="position: absolute; left: 350px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G3</span>
+            </div>
+            <!-- H2 -->
+            <div style="position: absolute; left: 40px; top: 20px; width: 60px; height: 100px; background-color: {rack_color("H2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H2</span>
+            </div>
+            <!-- H1 -->
+            <div style="position: absolute; left: 40px; top: 120px; width: 60px; height: 100px; background-color: {rack_color("H1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H1</span>
+            </div>
+            <!-- I1 -->
+            <div style="position: absolute; left: 110px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I1</span>
+            </div>
+            <!-- I2 -->
+            <div style="position: absolute; left: 230px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I2</span>
+            </div>
+            <!-- K1 -->
+            <div style="position: absolute; left: 110px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K1</span>
+            </div>
+            <!-- K2 -->
+            <div style="position: absolute; left: 230px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K2</span>
+            </div>
+            <!-- F1 -->
+            <div style="position: absolute; left: 410px; top: 85px; width: 60px; height: 70px; background-color: {rack_color("F1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F1</span>
+            </div>
+            <!-- F2 -->
+            <div style="position: absolute; left: 410px; top: 155px; width: 60px; height: 70px; background-color: {rack_color("F2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F2</span>
+            </div>
+            <!-- F3 -->
+            <div style="position: absolute; left: 410px; top: 225px; width: 60px; height: 70px; background-color: {rack_color("F3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F3</span>
+            </div>
+            <!-- F4 -->
+            <div style="position: absolute; left: 410px; top: 295px; width: 60px; height: 70px; background-color: {rack_color("F4")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F4</span>
+            </div>
+            <!-- F5 -->
+            <div style="position: absolute; left: 410px; top: 365px; width: 60px; height: 70px; background-color: {rack_color("F5")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F5</span>
+            </div>
+            <!-- F6 -->
+            <div style="position: absolute; left: 410px; top: 435px; width: 60px; height: 70px; background-color: {rack_color("F6")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
+                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F6</span>
+            </div>
+        </div>
+        '''
+        st.markdown(map_html, unsafe_allow_html=True)
     
-    def rack_color(name):
-        return "#8FC360" if (rack_highlight and name == rack_highlight) else "#8B0000"
-    
-    map_html = f'''
-    <div style="position: relative; width: 530px; height: 550px; margin: 0 auto; background-color: black; border: 2px solid #333; border-radius: 10px;">
-        <!-- G1 -->
-        <div style="position: absolute; left: 110px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G1</span>
-        </div>
-        <!-- G2 -->
-        <div style="position: absolute; left: 230px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G2</span>
-        </div>
-        <!-- G3 -->
-        <div style="position: absolute; left: 350px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G3</span>
-        </div>
-        <!-- H2 -->
-        <div style="position: absolute; left: 40px; top: 20px; width: 60px; height: 100px; background-color: {rack_color("H2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H2</span>
-        </div>
-        <!-- H1 -->
-        <div style="position: absolute; left: 40px; top: 120px; width: 60px; height: 100px; background-color: {rack_color("H1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H1</span>
-        </div>
-        <!-- I1 -->
-        <div style="position: absolute; left: 110px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I1</span>
-        </div>
-        <!-- I2 -->
-        <div style="position: absolute; left: 230px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I2</span>
-        </div>
-        <!-- K1 -->
-        <div style="position: absolute; left: 110px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K1</span>
-        </div>
-        <!-- K2 -->
-        <div style="position: absolute; left: 230px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K2</span>
-        </div>
-        <!-- F1 -->
-        <div style="position: absolute; left: 410px; top: 85px; width: 60px; height: 70px; background-color: {rack_color("F1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F1</span>
-        </div>
-        <!-- F2 -->
-        <div style="position: absolute; left: 410px; top: 155px; width: 60px; height: 70px; background-color: {rack_color("F2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F2</span>
-        </div>
-        <!-- F3 -->
-        <div style="position: absolute; left: 410px; top: 225px; width: 60px; height: 70px; background-color: {rack_color("F3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F3</span>
-        </div>
-        <!-- F4 -->
-        <div style="position: absolute; left: 410px; top: 295px; width: 60px; height: 70px; background-color: {rack_color("F4")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F4</span>
-        </div>
-        <!-- F5 -->
-        <div style="position: absolute; left: 410px; top: 365px; width: 60px; height: 70px; background-color: {rack_color("F5")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F5</span>
-        </div>
-        <!-- F6 -->
-        <div style="position: absolute; left: 410px; top: 435px; width: 60px; height: 70px; background-color: {rack_color("F6")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-            <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F6</span>
-        </div>
-    </div>
-    '''
-    st.markdown(map_html, unsafe_allow_html=True)
-    
-    # --- Mostrar detalles del material si se encontró ---
+    # --- Mostrar detalles del material (tanto para holder como para material) ---
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         if stock_total <= 5:
@@ -394,6 +398,8 @@ def buscar():
         else:
             st.session_state.page = 'menu'
         st.rerun()
+
+# ================= RESTO DE FUNCIONES (sin cambios) =================
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
