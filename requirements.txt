@@ -1,9 +1,10 @@
 streamlit
 firebase-admin
 pandas
-opencv-python-headless
-pyzbar
-pillow
+opencv-python
 numpy
-requests
+pillow
 openpyxl
+xlsxwriter
+pytesseract
+reportlab
