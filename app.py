@@ -243,6 +243,24 @@ def actualizar_posicion(item_id, categoria, pos_x, pos_y):
         st.error(f"Error al actualizar posición: {e}")
         return False
 
+def actualizar_posicion_y_tamanio(item_id, categoria, pos_x, pos_y, tamanio):
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        count = 0
+        for doc in docs:
+            db.collection(categoria).document(doc.id).update({
+                "pos_x": pos_x, 
+                "pos_y": pos_y,
+                "tamanio": tamanio
+            })
+            count += 1
+        if count > 0:
+            obtener_inventario.clear()
+        return count > 0
+    except Exception as e:
+        st.error(f"Error al actualizar posición/tamaño: {e}")
+        return False
+
 # --- MOTOR DE ESCANEO DE QR ---
 def decodificar_qr(foto):
     try:
@@ -445,6 +463,7 @@ def buscar():
     ubicacion_raw = ""
     pos_x = 50
     pos_y = 50
+    tamanio_img = 100
     
     if busqueda:
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
@@ -466,6 +485,7 @@ def buscar():
                 ubicacion_raw = item_seleccionado.get('ubicacion', '')
                 pos_x = item_seleccionado.get('pos_x', 50)
                 pos_y = item_seleccionado.get('pos_y', 50)
+                tamanio_img = item_seleccionado.get('tamanio', 100)
                 
                 if col_f == "holders":
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
@@ -558,11 +578,10 @@ def buscar():
                     else:
                         st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
             
-            # Fila 3: Posicionar imagen con coordenadas X e Y y TAMAÑO
+            # Fila 3: Posicionar imagen con coordenadas X, Y y TAMAÑO
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h5 style='color: #00FF00;'>🖼️ AJUSTAR IMAGEN / 이미지 조정</h5>", unsafe_allow_html=True)
             
-            # Controles de coordenadas y tamaño en 3 columnas
             col_x1, col_y1, col_size1 = st.columns(3)
             with col_x1:
                 nueva_pos_x = st.slider("📍 POSICIÓN X (%)", min_value=0, max_value=100, value=int(pos_x), key="pos_x_slider")
@@ -571,17 +590,16 @@ def buscar():
                 nueva_pos_y = st.slider("📍 POSICIÓN Y (%)", min_value=0, max_value=100, value=int(pos_y), key="pos_y_slider")
                 st.caption("0% = arriba, 50% = centro, 100% = abajo")
             with col_size1:
-                tamanio_imagen = st.slider("📏 TAMAÑO DE IMAGEN (%)", min_value=20, max_value=100, value=tamanio_img, key="tamanio_slider")
-                st.caption(f"{tamanio_imagen}% del tamaño original")
+                nuevo_tamanio = st.slider("📏 TAMAÑO DE IMAGEN (%)", min_value=20, max_value=100, value=int(tamanio_img), key="tamanio_slider")
+                st.caption(f"{nuevo_tamanio}% del tamaño original")
             
-            # Botón de guardar centrado
             col_btn1, col_btn2, col_btn3 = st.columns([0.35, 0.3, 0.35])
             with col_btn2:
                 if st.button("🎯 GUARDAR CONFIGURACIÓN DE IMAGEN / 이미지 설정 저장", key="btn_guardar_posicion"):
-                    if (nueva_pos_x != pos_x or nueva_pos_y != pos_y or tamanio_imagen != tamanio_img):
+                    if (nueva_pos_x != pos_x or nueva_pos_y != pos_y or nuevo_tamanio != tamanio_img):
                         with st.spinner("Guardando configuración de imagen... / 이미지 설정 저장 중..."):
-                            if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, tamanio_imagen):
-                                st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={tamanio_imagen}%")
+                            if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, nuevo_tamanio):
+                                st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={nuevo_tamanio}%")
                                 st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                                 time.sleep(0.8)
                                 st.rerun()
@@ -610,19 +628,22 @@ def buscar():
             </div>
         ''', unsafe_allow_html=True)
         
-        # ---- IMAGEN CON POSICIONAMIENTO POR COORDENADAS ----
+        # ---- IMAGEN CON POSICIONAMIENTO POR COORDENADAS Y TAMAÑO ----
         if foto_url:
+            ancho_max = int(280 * (tamanio_img / 100))
+            alto_max = int(240 * (tamanio_img / 100))
+            
             st.markdown(f'''
             <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a;">
                 <div style="position: absolute; left: {pos_x}%; top: {pos_y}%; transform: translate(-50%, -50%);">
-                    <img src="{foto_url}" style="max-width: 280px; max-height: 240px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);">
+                    <img src="{foto_url}" style="max-width: {ancho_max}px; max-height: {alto_max}px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);">
                 </div>
                 <div style="position: absolute; bottom: 5px; right: 10px; font-size: 10px; color: #666;">
-                    X:{pos_x}% Y:{pos_y}%
+                    X:{pos_x}% Y:{pos_y}% | Tamaño: {tamanio_img}%
                 </div>
             </div>
             ''', unsafe_allow_html=True)
-            st.caption("🖱️ Las coordenadas X e Y definen la posición de la imagen dentro del recuadro gris")
+            st.caption("🖱️ Las coordenadas X e Y definen la posición de la imagen dentro del recuadro gris. El tamaño es ajustable por YAKO.")
         else:
             st.markdown(f'''
             <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a; display: flex; align-items: center; justify-content: center;">
@@ -806,7 +827,7 @@ def formulario():
                     url_foto_final = blob.public_url
 
             with st.spinner("💾 Guardando registro... / 등록 저장 중..."):
-                # Al crear nuevo material/holder, guardar posición por defecto
+                # Al crear nuevo material/holder, guardar posición y tamaño por defecto
                 db.collection(cat).add({
                     "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
@@ -814,7 +835,8 @@ def formulario():
                     "evidencia_url": url_foto_final,
                     "registrado_por": st.session_state.user if st.session_state.user else "INVITADO",
                     "pos_x": 50,
-                    "pos_y": 50
+                    "pos_y": 50,
+                    "tamanio": 100
                 })
                 obtener_inventario.clear() 
                 st.session_state.pop('busqueda_input', None)
@@ -962,7 +984,8 @@ def admin():
                                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                         "registrado_por": st.session_state.user if st.session_state.user else "ADMIN",
                                         "pos_x": 50,
-                                        "pos_y": 50
+                                        "pos_y": 50,
+                                        "tamanio": 100
                                     })
                                     registros_cargados += 1
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
@@ -1021,7 +1044,8 @@ def admin():
                                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                         "registrado_por": st.session_state.user if st.session_state.user else "ADMIN",
                                         "pos_x": 50,
-                                        "pos_y": 50
+                                        "pos_y": 50,
+                                        "tamanio": 100
                                     })
                                     registros_cargados += 1
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
