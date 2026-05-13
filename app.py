@@ -56,28 +56,38 @@ def obtener_inventario():
     except Exception as e:
         return []
 
+# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
+def obtener_url_final(url):
+    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0", ""]:
+        return None
+    url_limpia = str(url).strip()
+    if "drive.google.com" in url_limpia:
+        match = re.search(r'(?:id=|d/|file/d/)([-\w]{25,})', url_limpia)
+        if match:
+            return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
+    
+    if not url_limpia.startswith("http"):
+        return None
+        
+    return url_limpia
+
 # --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
 def normalizar_texto(texto):
     """Normaliza texto eliminando símbolos y espacios para comparación"""
     if not texto:
         return ""
     texto = str(texto).upper().strip()
-    # Reemplazar símbolos comunes por espacios
     for simbolo in ['/', '|', '-', '_', '.', ',', ';', ':', '#', '$', '%', '&', '*', '(', ')', '[', ']', '{', '}', '\\', '=', '+']:
         texto = texto.replace(simbolo, ' ')
-    # Eliminar espacios múltiples y trim
     texto = ' '.join(texto.split())
     return texto
 
 def buscar_coincidencia_por_qr(texto_qr, inventario_total):
     """Busca coincidencias entre el texto del QR y los items en inventario"""
     if not texto_qr:
-        return None, None
+        return None
     
     texto_normalizado_qr = normalizar_texto(texto_qr)
-    palabras_qr = set(texto_normalizado_qr.split())
-    
-    coincidencias = []
     
     for item in inventario_total:
         nombre = str(item.get('nombre', '')).upper()
@@ -85,33 +95,22 @@ def buscar_coincidencia_por_qr(texto_qr, inventario_total):
         
         # Buscar coincidencia exacta primero
         if texto_qr == nombre or texto_qr == item_id:
-            return item, 100  # Coincidencia exacta
+            return item
         
         # Buscar coincidencia normalizada
         nombre_normalizado = normalizar_texto(nombre)
         id_normalizado = normalizar_texto(item_id)
         
         if texto_normalizado_qr == nombre_normalizado or texto_normalizado_qr == id_normalizado:
-            return item, 95
+            return item
         
-        # Buscar por palabras clave
-        palabras_nombre = set(nombre_normalizado.split())
-        palabras_id = set(id_normalizado.split())
-        
-        coincidencia_nombre = len(palabras_qr.intersection(palabras_nombre))
-        coincidencia_id = len(palabras_qr.intersection(palabras_id))
-        
-        max_coincidencia = max(coincidencia_nombre, coincidencia_id)
-        if max_coincidencia > 0:
-            porcentaje = int((max_coincidencia / max(len(palabras_qr), 1)) * 100)
-            if porcentaje >= 30:  # Al menos 30% de coincidencia
-                coincidencias.append((item, porcentaje))
+        # Buscar si el texto del QR contiene el ID o viceversa
+        if texto_qr in item_id or item_id in texto_qr:
+            return item
+        if texto_qr in nombre or nombre in texto_qr:
+            return item
     
-    if coincidencias:
-        coincidencias.sort(key=lambda x: x[1], reverse=True)
-        return coincidencias[0][0], coincidencias[0][1]
-    
-    return None, None
+    return None
 
 def ir(acc, cat):
     st.session_state.accion = acc
@@ -259,6 +258,17 @@ st.markdown("""
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
+    
+    @keyframes rayo {
+        0% { opacity: 0; transform: scale(0.5); }
+        50% { opacity: 1; transform: scale(1.2); }
+        100% { opacity: 0; transform: scale(0.5); }
+    }
+    .rayo-animation {
+        animation: rayo 0.5s ease-out;
+        display: inline-block;
+        font-size: 50px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -397,7 +407,7 @@ def buscar():
     
     if busqueda:
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
-            time.sleep(0.5)
+            time.sleep(0.3)
             inventario_total = obtener_inventario()
             coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
             
@@ -474,8 +484,8 @@ def buscar():
                             time.sleep(0.5)
                             if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
                                 st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()} / 위치가 업데이트되었습니다.")
-                                st.balloons()
-                                time.sleep(1)
+                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
+                                time.sleep(0.5)
                                 st.rerun()
                     elif not nueva_ubicacion:
                         st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
@@ -544,27 +554,25 @@ def formulario():
                 res = decodificar_qr(cam)
                 if res:
                     st.success(f"✅ QR detectado: {res} / QR 감지됨")
+                    st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                     
-                    with st.spinner("🔍 Buscando coincidencias en la base de datos... / 데이터베이스에서 일치 항목 검색 중..."):
+                    with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
                         time.sleep(0.5)
                         inventario_total = obtener_inventario()
-                        item_encontrado, porcentaje = buscar_coincidencia_por_qr(res, inventario_total)
+                        item_encontrado = buscar_coincidencia_por_qr(res, inventario_total)
                         
                         if item_encontrado:
-                            st.balloons()
-                            st.success(f"🎯 ¡COINCIDENCIA ENCONTRADA! / 일치 항목 발견! - {porcentaje}% match")
                             st.info(f"📦 Material/Holder encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
                             
-                            # Autocompletar el campo de búsqueda
                             texto_busqueda = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
                             if st.session_state.get("busqueda_input", "") != texto_busqueda:
                                 st.session_state["busqueda_input"] = texto_busqueda
                                 st.rerun()
                         else:
-                            st.warning("⚠️ No se encontraron coincidencias en la base de datos / 데이터베이스에서 일치 항목을 찾을 수 없습니다.")
+                            st.warning("⚠️ No se encontraron coincidencias / 일치 항목 없음")
                             st.info(f"Texto del QR: {res}")
                 else:
-                    st.error("⚠️ No se detectó un QR claro. Intenta acercarlo, quitar reflejos o mejorar la luz.")
+                    st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
             
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
     
