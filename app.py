@@ -90,7 +90,6 @@ def ir(acc, cat):
     st.session_state.accion = acc
     st.session_state.categoria = cat
     st.session_state.page = 'form'
-    # Limpiar de forma segura
     st.session_state.pop('busqueda_input', None)
     st.rerun()
 
@@ -223,18 +222,16 @@ def menu():
         if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
         if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
-# ================= FUNCIÓN BUSCAR MODIFICADA =================
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
-    # --- Variables que se llenarán si hay búsqueda ---
     item_seleccionado = None
     stock_total = 0
     foto_url = None
     nombre_item = ""
     id_f = ""
-    col_f = ""  # "materiales" o "holders"
+    col_f = ""
     rack_highlight = None
     ubicacion_raw = ""
     
@@ -255,7 +252,6 @@ def buscar():
             nombre_item = item_seleccionado.get('nombre', '')
             ubicacion_raw = item_seleccionado.get('ubicacion', '')
             
-            # Solo si es holder, extraemos el rack para resaltar
             if col_f == "holders":
                 rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                 rack_highlight = rack_match.group(1) if rack_match else None
@@ -274,71 +270,26 @@ def buscar():
         
         map_html = f'''
         <div style="position: relative; width: 530px; height: 550px; margin: 0 auto; background-color: black; border: 2px solid #333; border-radius: 10px;">
-            <!-- G1 -->
-            <div style="position: absolute; left: 110px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G1</span>
-            </div>
-            <!-- G2 -->
-            <div style="position: absolute; left: 230px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G2</span>
-            </div>
-            <!-- G3 -->
-            <div style="position: absolute; left: 350px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">G3</span>
-            </div>
-            <!-- H2 -->
-            <div style="position: absolute; left: 40px; top: 20px; width: 60px; height: 100px; background-color: {rack_color("H2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H2</span>
-            </div>
-            <!-- H1 -->
-            <div style="position: absolute; left: 40px; top: 120px; width: 60px; height: 100px; background-color: {rack_color("H1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">H1</span>
-            </div>
-            <!-- I1 -->
-            <div style="position: absolute; left: 110px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I1</span>
-            </div>
-            <!-- I2 -->
-            <div style="position: absolute; left: 230px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">I2</span>
-            </div>
-            <!-- K1 -->
-            <div style="position: absolute; left: 110px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K1</span>
-            </div>
-            <!-- K2 -->
-            <div style="position: absolute; left: 230px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg); text-shadow: 1px 1px 0px black;">K2</span>
-            </div>
-            <!-- F1 -->
-            <div style="position: absolute; left: 410px; top: 85px; width: 60px; height: 70px; background-color: {rack_color("F1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F1</span>
-            </div>
-            <!-- F2 -->
-            <div style="position: absolute; left: 410px; top: 155px; width: 60px; height: 70px; background-color: {rack_color("F2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F2</span>
-            </div>
-            <!-- F3 -->
-            <div style="position: absolute; left: 410px; top: 225px; width: 60px; height: 70px; background-color: {rack_color("F3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F3</span>
-            </div>
-            <!-- F4 -->
-            <div style="position: absolute; left: 410px; top: 295px; width: 60px; height: 70px; background-color: {rack_color("F4")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F4</span>
-            </div>
-            <!-- F5 -->
-            <div style="position: absolute; left: 410px; top: 365px; width: 60px; height: 70px; background-color: {rack_color("F5")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F5</span>
-            </div>
-            <!-- F6 -->
-            <div style="position: absolute; left: 410px; top: 435px; width: 60px; height: 70px; background-color: {rack_color("F6")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 5px rgba(0,0,0,0.5);">
-                <span style="color: white; font-weight: bold; font-size: 18px; text-shadow: 1px 1px 0px black;">F6</span>
-            </div>
+            <div style="position: absolute; left: 110px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">G1</span></div>
+            <div style="position: absolute; left: 230px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">G2</span></div>
+            <div style="position: absolute; left: 350px; top: 20px; width: 120px; height: 50px; background-color: {rack_color("G3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">G3</span></div>
+            <div style="position: absolute; left: 40px; top: 20px; width: 60px; height: 100px; background-color: {rack_color("H2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">H2</span></div>
+            <div style="position: absolute; left: 40px; top: 120px; width: 60px; height: 100px; background-color: {rack_color("H1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">H1</span></div>
+            <div style="position: absolute; left: 110px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">I1</span></div>
+            <div style="position: absolute; left: 230px; top: 100px; width: 120px; height: 50px; background-color: {rack_color("I2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">I2</span></div>
+            <div style="position: absolute; left: 110px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">K1</span></div>
+            <div style="position: absolute; left: 230px; top: 160px; width: 120px; height: 50px; background-color: {rack_color("K2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px; transform: rotate(90deg);">K2</span></div>
+            <div style="position: absolute; left: 410px; top: 85px; width: 60px; height: 70px; background-color: {rack_color("F1")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F1</span></div>
+            <div style="position: absolute; left: 410px; top: 155px; width: 60px; height: 70px; background-color: {rack_color("F2")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F2</span></div>
+            <div style="position: absolute; left: 410px; top: 225px; width: 60px; height: 70px; background-color: {rack_color("F3")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F3</span></div>
+            <div style="position: absolute; left: 410px; top: 295px; width: 60px; height: 70px; background-color: {rack_color("F4")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F4</span></div>
+            <div style="position: absolute; left: 410px; top: 365px; width: 60px; height: 70px; background-color: {rack_color("F5")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F5</span></div>
+            <div style="position: absolute; left: 410px; top: 435px; width: 60px; height: 70px; background-color: {rack_color("F6")}; border: 2px solid white; border-radius: 6px; display: flex; align-items: center; justify-content: center;"><span style="color: white; font-weight: bold; font-size: 18px;">F6</span></div>
         </div>
         '''
         st.markdown(map_html, unsafe_allow_html=True)
     
-    # --- Mostrar detalles del material (tanto para holder como para material) ---
+    # --- Mostrar detalles ---
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         if stock_total <= 5:
@@ -351,7 +302,6 @@ def buscar():
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
-        # Generar QR
         nombre_id_qr = f"{nombre_item}/{id_f}"
         nombre_codificado = urllib.parse.quote(nombre_id_qr)
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
@@ -362,14 +312,12 @@ def buscar():
             </div>
         ''', unsafe_allow_html=True)
         
-        # Foto
         if foto_url:
             st.markdown(f'<div class="photo-right"><img src="{foto_url}" style="width:100%; border-radius:15px;"></div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # Solo YAKO puede actualizar foto
         if st.session_state.user == "YAKO":
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
@@ -398,8 +346,6 @@ def buscar():
         else:
             st.session_state.page = 'menu'
         st.rerun()
-
-# ================= RESTO DE FUNCIONES (sin cambios) =================
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
@@ -532,7 +478,7 @@ def formulario():
                 "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
             })
             obtener_inventario.clear() 
-            st.session_state.pop('busqueda_input', None)  # Limpiar seguro
+            st.session_state.pop('busqueda_input', None)
             st.success("✅ REGISTRADO CON ÉXITO")
             st.balloons()
             st.rerun() 
@@ -548,200 +494,10 @@ def admin():
     es_yako = (st.session_state.user == "YAKO")
     
     if es_yako:
-        t1, t2, t3, t4, t5 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔"])
+        t1, t2, t3, t4, t5, t6 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔", "GENERAR ETIQUETAS / 라벨 생성"])
     else:
         t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
     
     if es_yako:
         with t1:
-            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
-            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
-            if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
-                if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
-                    if del_id:
-                        docs_ref = db.collection(cdb).where("item", "==", del_id).stream()
-                    else:
-                        docs_ref = db.collection(cdb).stream()
-                        
-                    docs_borrar = list(docs_ref)
-                    total_borrar = len(docs_borrar)
-                    
-                    if total_borrar == 0:
-                        st.warning("⚠️ No hay registros para borrar. / 삭제할 레코드가 없습니다.")
-                    else:
-                        barra_borrado = st.progress(0, text=f"🗑️ Iniciando borrado de {total_borrar} registros... / {total_borrar}개 레코드 삭제 시작...")
-                        
-                        for i, doc in enumerate(docs_borrar):
-                            db.collection(cdb).document(doc.id).delete()
-                            porcentaje_borrado = (i + 1) / total_borrar
-                            barra_borrado.progress(porcentaje_borrado, text=f"⏳ Borrando {i+1} de {total_borrar} registros... ({int(porcentaje_borrado * 100)}%)")
-                            
-                        barra_borrado.empty()
-                        obtener_inventario.clear() 
-                        st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros eliminados. / 삭제 완료: {total_borrar}개 레코드 삭제됨.")
-                        st.rerun()
-                
-    with t2:
-        ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
-        if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
-            data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
-            if data:
-                for d in data:
-                    d['nombre'] = d.get('nombre', 'SIN NOMBRE')
-                    d['item'] = d.get('item', 'SIN ID')
-                    
-                df = pd.DataFrame(data)
-                
-                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
-                    if col not in df.columns:
-                        df[col] = ''
-                        
-                df = df.rename(columns={
-                    'fecha': 'FECHA / 날짜',
-                    'item': 'ID',
-                    'nombre': 'NOMBRE / 이름',
-                    'cantidad': 'CANTIDAD / 수량',
-                    'ubicacion': 'UBICACIÓN / 위치',
-                    'solicitante': 'SOLICITANTE / 신청자',
-                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
-                    'evidencia_url': 'EVIDENCIA / 증거',
-                    'registrado_por': 'USUARIO / 사용자'
-                })
-                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
-                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
-                
-    with t3:
-        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
-        arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
-        if arch:
-            if st.button("🚀 INICIAR CARGA / 로드 시작"):
-                try:
-                    df_in = pd.read_excel(arch, engine='openpyxl')
-                    df_in = df_in.fillna('')
-                    
-                    def limpiar_columna(col):
-                        c = str(col).split('/')[0].strip().upper()
-                        c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
-                        return c
-                        
-                    df_in.columns = [limpiar_columna(c) for c in df_in.columns]
-                    
-                    if df_in.empty:
-                        st.error("⚠️ El archivo Excel está vacío. / 엑셀 파일이 비어 있습니다.")
-                    else:
-                        total_filas = len(df_in)
-                        barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} registros... / {total_filas}개 레코드 로드 시작...")
-                        
-                        for i, (_, f) in enumerate(df_in.iterrows()):
-                            item_id = str(f.get('ID', '')).strip()
-                            if not item_id:
-                                continue
-                                
-                            raw_cant = str(f.get('CANTIDAD', '0')).strip()
-                            if '.' in raw_cant:
-                                raw_cant = raw_cant.split('.')[0]
-                            cant_limpia = re.sub(r'\D', '', raw_cant) 
-                            cantidad_final = int(cant_limpia) if cant_limpia else 0
-
-                            db.collection(dest).add({
-                                "nombre": str(f.get('NOMBRE','')).upper(),
-                                "item": item_id.upper(),
-                                "cantidad": cantidad_final,
-                                "ubicacion": str(f.get('UBICACION','ALM')).upper(),
-                                "foto_url": str(f.get('FOTO','NO FOTO')),
-                                "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
-                            })
-                            porcentaje = (i + 1) / total_filas
-                            barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%)")
-                        
-                        barra_progreso.empty()
-                        obtener_inventario.clear() 
-                        st.success("✅ CARGA MASIVA COMPLETADA AL 100% / 대량 로드 100% 완료")
-                        st.balloons()
-                except Exception as e:
-                    st.error(f"⚠️ Error al procesar el Excel: {e}")
-                    st.info("Asegúrate de haber ejecutado 'pip install openpyxl' y que tus columnas se llamen: NOMBRE, ID, CANTIDAD, UBICACIÓN, FOTO")
-            
-    if es_yako:
-        with t4:
-            uds = db.collection("USUARIOS").stream()
-            for u in uds:
-                ud = u.to_dict()
-                with st.container():
-                    st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
-                    if u.id != "YAKO":
-                        if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
-                            db.collection("USUARIOS").document(u.id).delete()
-                            st.rerun()
-
-        with t5:
-            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
-            st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
-            
-            cam_ocr = st.camera_input("CÁMARA OCR / OCR 카메라", key="cam_ocr")
-            
-            if cam_ocr:
-                try:
-                    import pytesseract
-                    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-                    from PIL import Image
-                    import xlsxwriter
-                    
-                    img_pil = Image.open(cam_ocr)
-                    texto_extraido = pytesseract.image_to_string(img_pil).strip()
-                    
-                    if texto_extraido:
-                        st.success("✅ Texto detectado / 텍스트 감지됨")
-                        texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
-                        
-                        output = io.BytesIO()
-                        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-                        worksheet = workbook.add_worksheet("OCR_DATA")
-                        
-                        worksheet.set_column('A:A', 40)
-                        worksheet.set_column('B:B', 60)
-                        cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
-                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
-                        
-                        worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
-                        worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
-                        
-                        img_data = io.BytesIO(cam_ocr.getvalue())
-                        worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
-                        worksheet.write('B2', texto_final, cell_format)
-                        worksheet.set_row(1, 150) 
-                        
-                        workbook.close()
-                        output.seek(0)
-                        
-                        st.download_button(
-                            label="📥 DESCARGAR EXCEL CON FOTO Y TEXTO / 엑셀 다운로드",
-                            data=output,
-                            file_name=f"OCR_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    else:
-                        st.warning("⚠️ No se detectó texto claro en la imagen. Intenta de nuevo con mejor iluminación. / 이미지에서 텍스트를 찾을 수 없습니다. 밝은 곳에서 다시 시도하세요.")
-                        
-                except ImportError:
-                    st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
-                except Exception as e:
-                    st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
-                    
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    col_v, _ = st.columns([0.4, 0.6])
-    with col_v:
-        if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
-            st.session_state.page = 'menu'
-            st.rerun()
-
-# --- NAVEGACIÓN ---
-if st.session_state.page == 'login': login()
-elif st.session_state.page == 'cambiar_datos': cambiar_datos()
-elif st.session_state.page == 'menu': menu()
-elif st.session_state.page == 'buscar': buscar()
-elif st.session_state.page == 'form': formulario()
-elif st.session_state.page == 'admin': admin()
+            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>
