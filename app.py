@@ -11,6 +11,14 @@ import re
 import urllib.parse
 import io
 import unicodedata 
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics import renderPDF
+from reportlab.graphics.barcode import qr
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
@@ -69,13 +77,11 @@ def decodificar_qr(foto):
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        # Intento 1: Detector QR nativo de OpenCV
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         if data:
             return str(data).upper()
         
-        # Intento 2: Mejorar contraste con umbralización Otsu
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         data2, _, _ = detector.detectAndDecode(thresh)
@@ -92,6 +98,92 @@ def ir(acc, cat):
     st.session_state.page = 'form'
     st.session_state.pop('busqueda_input', None)
     st.rerun()
+
+# --- FUNCIÓN GENERAR PDF ETIQUETAS (estilo código compartido) ---
+def generar_pdf_etiquetas(nombres, ids):
+    from reportlab.platypus import Flowable
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics import renderPDF
+    from reportlab.graphics.barcode import qr
+    
+    class QRCodeImage(Flowable):
+        def __init__(self, data, size=60):
+            Flowable.__init__(self)
+            self.data = data
+            self.size = size
+
+        def draw(self):
+            qr_code = qr.QrCodeWidget(self.data)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+           
+            drawing = Drawing(self.size, self.size)
+            drawing.add(qr_code)
+            scale = self.size / width
+            drawing.scale(scale, scale)
+           
+            self.canv.saveState()
+            X = -5
+            Y = -50
+            self.canv.translate(X, Y)
+            renderPDF.draw(drawing, self.canv, 0, 0)
+            self.canv.restoreState()
+    
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=letter)
+    story = []
+    
+    estilo_texto = getSampleStyleSheet()['Normal']
+    estilo_texto.alignment = 1
+    estilo_texto.fontName = 'Helvetica-Bold'
+    estilo_texto.fontSize = 11
+    estilo_texto.leading = 12  
+
+    for nombre, id_val in zip(nombres, ids):
+        TAMANO_QR = 100
+        codigo_qr = QRCodeImage(f"{nombre}|{id_val}", size=TAMANO_QR)
+        
+        nombre_para = Paragraph(nombre.upper(), estilo_texto)
+        
+        data_table = [
+            [codigo_qr, "STOCK"],
+            ["", nombre_para],
+            [f"ID: {id_val}", ""]
+        ]
+        
+        col_widths = [1.4 * inch, 3.0 * inch]
+        row_heights = [0.3 * inch, 1.1 * inch, 0.4 * inch]
+       
+        t = Table(data_table, colWidths=col_widths, rowHeights=row_heights)
+        
+        t.setStyle(TableStyle([
+            ('SPAN', (0, 0), (0, 1)),
+            ('SPAN', (0, 2), (1, 2)),
+            ('ALIGN', (0, 0), (0, 1), 'LEFT'),
+            ('VALIGN', (0, 0), (0, 1), 'MIDDLE'),
+            ('ALIGN', (1, 0), (1, 0), 'CENTER'),
+            ('VALIGN', (1, 0), (1, 0), 'MIDDLE'),
+            ('ALIGN', (1, 1), (1, 1), 'CENTER'),
+            ('VALIGN', (1, 1), (1, 1), 'MIDDLE'),
+            ('LEFTPADDING', (1, 1), (1, 1), 8),
+            ('RIGHTPADDING', (1, 1), (1, 1), 8),
+            ('ALIGN', (0, 2), (1, 2), 'CENTER'),
+            ('VALIGN', (0, 2), (1, 2), 'MIDDLE'),
+            ('FONTSIZE', (0, 2), (1, 2), 16),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (1, 0), (1, 0), colors.darkslategray),
+            ('TEXTCOLOR', (1, 0), (1, 0), colors.white),
+            ('BACKGROUND', (0, 2), (1, 2), colors.lightgrey),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        
+        story.append(t)
+        story.append(Spacer(1, 0.25 * inch))
+    
+    doc.build(story)
+    output.seek(0)
+    return output
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
@@ -261,7 +353,6 @@ def buscar():
         else:
             st.warning("No se encontraron resultados / 결과 없음")
     
-    # --- MAPA DE RACKS SOLO PARA HOLDERS ---
     if item_seleccionado and col_f == "holders":
         st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
         
@@ -289,7 +380,6 @@ def buscar():
         '''
         st.markdown(map_html, unsafe_allow_html=True)
     
-    # --- Mostrar detalles ---
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         if stock_total <= 5:
@@ -441,7 +531,8 @@ def formulario():
     foto_evidencia = None
     if acc == "SALIDA":
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
-        linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
+        linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ
+         linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
         
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
@@ -500,4 +591,338 @@ def admin():
     
     if es_yako:
         with t1:
-            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>
+            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
+            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
+            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
+            if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
+                if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
+                    if del_id:
+                        docs_ref = db.collection(cdb).where("item", "==", del_id).stream()
+                    else:
+                        docs_ref = db.collection(cdb).stream()
+                        
+                    docs_borrar = list(docs_ref)
+                    total_borrar = len(docs_borrar)
+                    
+                    if total_borrar == 0:
+                        st.warning("⚠️ No hay registros para borrar. / 삭제할 레코드가 없습니다.")
+                    else:
+                        barra_borrado = st.progress(0, text=f"🗑️ Iniciando borrado de {total_borrar} registros... / {total_borrar}개 레코드 삭제 시작...")
+                        
+                        for i, doc in enumerate(docs_borrar):
+                            db.collection(cdb).document(doc.id).delete()
+                            porcentaje_borrado = (i + 1) / total_borrar
+                            barra_borrado.progress(porcentaje_borrado, text=f"⏳ Borrando {i+1} de {total_borrar} registros... ({int(porcentaje_borrado * 100)}%)")
+                            
+                        barra_borrado.empty()
+                        obtener_inventario.clear() 
+                        st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros eliminados. / 삭제 완료: {total_borrar}개 레코드 삭제됨.")
+                        st.rerun()
+                
+    with t2:
+        ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
+        if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
+            data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
+            if data:
+                for d in data:
+                    d['nombre'] = d.get('nombre', 'SIN NOMBRE')
+                    d['item'] = d.get('item', 'SIN ID')
+                    
+                df = pd.DataFrame(data)
+                
+                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
+                    if col not in df.columns:
+                        df[col] = ''
+                        
+                df = df.rename(columns={
+                    'fecha': 'FECHA / 날짜',
+                    'item': 'ID',
+                    'nombre': 'NOMBRE / 이름',
+                    'cantidad': 'CANTIDAD / 수량',
+                    'ubicacion': 'UBICACIÓN / 위치',
+                    'solicitante': 'SOLICITANTE / 신청자',
+                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
+                    'evidencia_url': 'EVIDENCIA / 증거',
+                    'registrado_por': 'USUARIO / 사용자'
+                })
+                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
+                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                
+    with t3:
+        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
+        st.markdown("""
+        <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+            <p style="color: #FFD700; font-weight: bold;">📌 FORMATO ESPERADO PARA HOLDERS:</p>
+            <p style="color: white;">• Columna <span style="color: #00FF00;">NUMERO</span> → ID del holder (ej: HD12345)</p>
+            <p style="color: white;">• Columna <span style="color: #00FF00;">UBICACION</span> → Rack donde está (ej: G1, F2, H1)</p>
+            <p style="color: #FF8888;">⚠️ El campo NOMBRE se copiará automáticamente desde NUMERO</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
+        if arch:
+            if st.button("🚀 INICIAR CARGA / 로드 시작"):
+                try:
+                    df_in = pd.read_excel(arch, engine='openpyxl')
+                    df_in = df_in.fillna('')
+                    
+                    def limpiar_columna(col):
+                        c = str(col).split('/')[0].strip().upper()
+                        c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
+                        return c
+                    
+                    # Limpiar nombres de columnas (eliminar tildes, etc.)
+                    columnas_originales = df_in.columns.tolist()
+                    df_in.columns = [limpiar_columna(c) for c in df_in.columns]
+                    
+                    # Mostrar columnas encontradas
+                    st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
+                    
+                    # Para HOLDERS: solo necesitamos NUMERO y UBICACION
+                    if dest == "holders":
+                        # Buscar columnas equivalentes (NUMERO, UBICACION)
+                        col_numero = None
+                        col_ubicacion = None
+                        
+                        for col in df_in.columns:
+                            if col in ['NUMERO', 'NUM', 'ID', 'HOLDER', 'HOLDER_ID', 'CODIGO']:
+                                col_numero = col
+                            if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION', 'LOCATION']:
+                                col_ubicacion = col
+                        
+                        if col_numero is None:
+                            st.error("❌ No se encontró una columna para NUMERO/ID. Las columnas disponibles son: " + ", ".join(df_in.columns.tolist()))
+                            st.info("Asegúrate de que el Excel tenga una columna llamada: NUMERO, ID, HOLDER_ID o similar")
+                        elif col_ubicacion is None:
+                            st.error("❌ No se encontró una columna para UBICACION/RACK. Las columnas disponibles son: " + ", ".join(df_in.columns.tolist()))
+                            st.info("Asegúrate de que el Excel tenga una columna llamada: UBICACION, UBICACIÓN, RACK o similar")
+                        else:
+                            total_filas = len(df_in)
+                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders... / {total_filas}개 홀더 로드 시작...")
+                            registros_cargados = 0
+                            
+                            for i, (_, f) in enumerate(df_in.iterrows()):
+                                numero = str(f.get(col_numero, '')).strip().upper()
+                                ubicacion = str(f.get(col_ubicacion, '')).strip().upper()
+                                
+                                if not numero:
+                                    continue
+                                
+                                # Para holders: el nombre = número
+                                nombre = numero
+                                
+                                db.collection(dest).add({
+                                    "nombre": nombre,
+                                    "item": numero,
+                                    "cantidad": 0,  # Stock inicial 0
+                                    "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
+                                    "foto_url": "NO FOTO",
+                                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                })
+                                registros_cargados += 1
+                                porcentaje = (i + 1) / total_filas
+                                barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%) - Cargados: {registros_cargados}")
+                            
+                            barra_progreso.empty()
+                            obtener_inventario.clear() 
+                            st.success(f"✅ CARGA MASIVA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
+                            st.balloons()
+                    
+                    else:  # materiales - carga normal con todas las columnas
+                        # Buscar columnas necesarias para materiales
+                        col_nombre = None
+                        col_id = None
+                        col_cantidad = None
+                        col_ubicacion = None
+                        col_foto = None
+                        
+                        for col in df_in.columns:
+                            if col in ['NOMBRE', 'NAME', 'PRODUCTO', 'MATERIAL']:
+                                col_nombre = col
+                            if col in ['ID', 'CODIGO', 'CODE', 'ITEM']:
+                                col_id = col
+                            if col in ['CANTIDAD', 'STOCK', 'QTY', 'CANT']:
+                                col_cantidad = col
+                            if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION']:
+                                col_ubicacion = col
+                            if col in ['FOTO', 'URL', 'IMAGEN', 'IMAGE']:
+                                col_foto = col
+                        
+                        if col_nombre is None or col_id is None:
+                            st.error("❌ Para MATERIALES se necesitan las columnas NOMBRE e ID")
+                            st.info("Columnas requeridas: NOMBRE, ID (CANTIDAD y UBICACION son opcionales)")
+                        else:
+                            total_filas = len(df_in)
+                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales... / {total_filas}개 자재 로드 시작...")
+                            registros_cargados = 0
+                            
+                            for i, (_, f) in enumerate(df_in.iterrows()):
+                                nombre = str(f.get(col_nombre, '')).strip().upper()
+                                item_id = str(f.get(col_id, '')).strip().upper()
+                                
+                                if not nombre or not item_id:
+                                    continue
+                                
+                                cantidad_raw = str(f.get(col_cantidad, '0')) if col_cantidad else '0'
+                                if '.' in cantidad_raw:
+                                    cantidad_raw = cantidad_raw.split('.')[0]
+                                cant_limpia = re.sub(r'\D', '', cantidad_raw)
+                                cantidad_final = int(cant_limpia) if cant_limpia else 0
+                                
+                                ubicacion = str(f.get(col_ubicacion, 'ALM')).strip().upper() if col_ubicacion else 'ALM'
+                                foto_url = str(f.get(col_foto, 'NO FOTO')) if col_foto else 'NO FOTO'
+                                
+                                db.collection(dest).add({
+                                    "nombre": nombre,
+                                    "item": item_id,
+                                    "cantidad": cantidad_final,
+                                    "ubicacion": ubicacion,
+                                    "foto_url": foto_url,
+                                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                })
+                                registros_cargados += 1
+                                porcentaje = (i + 1) / total_filas
+                                barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%) - Cargados: {registros_cargados}")
+                            
+                            barra_progreso.empty()
+                            obtener_inventario.clear() 
+                            st.success(f"✅ CARGA MASIVA COMPLETADA: {registros_cargados} materiales registrados / {registros_cargados}개 자재 등록됨")
+                            st.balloons()
+                            
+                except Exception as e:
+                    st.error(f"⚠️ Error al procesar el Excel: {e}")
+                    st.info("Asegúrate de haber ejecutado 'pip install openpyxl'")
+            
+    if es_yako:
+        with t4:
+            st.markdown("<h3>👥 USUARIOS REGISTRADOS / 등록된 사용자</h3>", unsafe_allow_html=True)
+            uds = db.collection("USUARIOS").stream()
+            for u in uds:
+                ud = u.to_dict()
+                with st.container():
+                    st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
+                    if u.id != "YAKO":
+                        if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
+                            db.collection("USUARIOS").document(u.id).delete()
+                            st.rerun()
+
+        with t5:
+            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
+            st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
+            
+            cam_ocr = st.camera_input("CÁMARA OCR / OCR 카메라", key="cam_ocr")
+            
+            if cam_ocr:
+                try:
+                    import pytesseract
+                    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+                    from PIL import Image
+                    import xlsxwriter
+                    
+                    img_pil = Image.open(cam_ocr)
+                    texto_extraido = pytesseract.image_to_string(img_pil).strip()
+                    
+                    if texto_extraido:
+                        st.success("✅ Texto detectado / 텍스트 감지됨")
+                        texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
+                        
+                        output = io.BytesIO()
+                        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+                        worksheet = workbook.add_worksheet("OCR_DATA")
+                        
+                        worksheet.set_column('A:A', 40)
+                        worksheet.set_column('B:B', 60)
+                        cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
+                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
+                        
+                        worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
+                        worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
+                        
+                        img_data = io.BytesIO(cam_ocr.getvalue())
+                        worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
+                        worksheet.write('B2', texto_final, cell_format)
+                        worksheet.set_row(1, 150) 
+                        
+                        workbook.close()
+                        output.seek(0)
+                        
+                        st.download_button(
+                            label="📥 DESCARGAR EXCEL CON FOTO Y TEXTO / 엑셀 다운로드",
+                            data=output,
+                            file_name=f"OCR_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    else:
+                        st.warning("⚠️ No se detectó texto claro en la imagen. Intenta de nuevo con mejor iluminación. / 이미지에서 텍스트를 찾을 수 없습니다. 밝은 곳에서 다시 시도하세요.")
+                        
+                except ImportError:
+                    st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
+                except Exception as e:
+                    st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
+        
+        with t6:
+            st.markdown("<h3 style='color:green;'>🏷️ GENERAR ETIQUETAS QR / QR 라벨 생성</h3>", unsafe_allow_html=True)
+            st.info("Genera un PDF con etiquetas QR para holders/materiales. Cada etiqueta incluye QR, nombre y ID.")
+            
+            col_q1, col_q2 = st.columns(2)
+            with col_q1:
+                st.markdown("**📝 NOMBRES / 이름**")
+                nombres_text = st.text_area("Escribe un nombre por línea:", height=200, key="nombres_etiquetas")
+            with col_q2:
+                st.markdown("**🔢 IDs / 코드**")
+                ids_text = st.text_area("Escribe un ID por línea:", height=200, key="ids_etiquetas")
+            
+            if st.button("🎨 GENERAR PDF / PDF 생성", type="primary"):
+                nombres = [n.strip().upper() for n in nombres_text.split("\n") if n.strip()]
+                ids = [i.strip().upper() for i in ids_text.split("\n") if i.strip()]
+                
+                if not nombres or not ids:
+                    st.error("❌ Debes escribir al menos un nombre y un ID")
+                elif len(nombres) != len(ids):
+                    st.error(f"⚠️ Los nombres y IDs no coinciden en cantidad: {len(nombres)} nombres vs {len(ids)} IDs")
+                else:
+                    with st.spinner("Generando PDF con etiquetas... / PDF 생성 중..."):
+                        try:
+                            pdf_buffer = generar_pdf_etiquetas(nombres, ids)
+                            st.success(f"✅ PDF generado con {len(nombres)} etiquetas / {len(nombres)}개 라벨 생성됨")
+                            st.download_button(
+                                label="📥 DESCARGAR PDF / PDF 다운로드",
+                                data=pdf_buffer,
+                                file_name=f"etiquetas_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                                mime="application/pdf"
+                            )
+                        except Exception as e:
+                            st.error(f"❌ Error al generar PDF: {e}")
+            
+            st.markdown("---")
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px;">
+                <p style="color: #FFD700;">💡 EJEMPLO / 예시:</p>
+                <p style="color: white;">Nombres:<br>
+                HOLDER PRINCIPAL<br>
+                HOLDER SECUNDARIO<br>
+                HOLDER TERCERO</p>
+                <p style="color: white;">IDs:<br>
+                HD001<br>
+                HD002<br>
+                HD003</p>
+            </div>
+            """, unsafe_allow_html=True)
+                    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col_v, _ = st.columns([0.4, 0.6])
+    with col_v:
+        if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
+            st.session_state.page = 'menu'
+            st.rerun()
+
+# --- NAVEGACIÓN ---
+if st.session_state.page == 'login': login()
+elif st.session_state.page == 'cambiar_datos': cambiar_datos()
+elif st.session_state.page == 'menu': menu()
+elif st.session_state.page == 'buscar': buscar()
+elif st.session_state.page == 'form': formulario()
+elif st.session_state.page == 'admin': admin()
