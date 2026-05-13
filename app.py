@@ -379,6 +379,7 @@ def login():
         st.session_state.page = 'buscar'
         st.rerun()
     
+    # GIF ANIMADO - SIEMPRE APARECE PARA TODOS
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -923,14 +924,29 @@ def admin():
                 
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
-        st.markdown("""
-        <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-            <p style="color: #FFD700; font-weight: bold;">📌 FORMATO ESPERADO PARA HOLDERS:</p>
-            <p style="color: white;">• Columna <span style="color: #00FF00;">NUMERO</span> → ID del holder (ej: HD12345)</p>
-            <p style="color: white;">• Columna <span style="color: #00FF00;">UBICACION</span> → Rack donde está (ej: G1, F2, H1)</p>
-            <p style="color: #FF8888;">⚠️ El campo NOMBRE se copiará automáticamente desde NUMERO</p>
-        </div>
-        """, unsafe_allow_html=True)
+        
+        # Mostrar formato según destino seleccionado
+        if dest == "holders":
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="color: #FFD700; font-weight: bold;">📌 FORMATO ESPERADO PARA HOLDERS / 홀더 형식:</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">NUMERO</span> → ID del holder (ej: HD12345)</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">QTY</span> → Cantidad inicial (ej: 10, 25, 0)</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">RACK</span> → Ubicación (ej: G1, F2, H1)</p>
+                <p style="color: #FF8888;">⚠️ El campo NOMBRE se copiará automáticamente desde NUMERO</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                <p style="color: #FFD700; font-weight: bold;">📌 FORMATO ESPERADO PARA MATERIALES / 자재 형식:</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">NOMBRE</span> → Nombre del material</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">ID</span> → Código del material</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">CANTIDAD</span> → Stock inicial (opcional)</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">UBICACION</span> → Rack o ubicación (opcional)</p>
+                <p style="color: white;">• Columna <span style="color: #00FF00;">FOTO</span> → URL de imagen (opcional)</p>
+            </div>
+            """, unsafe_allow_html=True)
         
         arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
         if arch:
@@ -950,19 +966,21 @@ def admin():
                         st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
                         
                         if dest == "holders":
+                            # Buscar columnas: NUMERO, QTY, RACK
                             col_numero = None
-                            col_ubicacion = None
+                            col_qty = None
+                            col_rack = None
                             
                             for col in df_in.columns:
                                 if col in ['NUMERO', 'NUM', 'ID', 'HOLDER', 'HOLDER_ID', 'CODIGO']:
                                     col_numero = col
-                                if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION', 'LOCATION']:
-                                    col_ubicacion = col
+                                if col in ['QTY', 'CANTIDAD', 'STOCK', 'CANT', 'QUANTITY']:
+                                    col_qty = col
+                                if col in ['RACK', 'UBICACION', 'UBICACIÓN', 'POSICION', 'LOCATION']:
+                                    col_rack = col
                             
                             if col_numero is None:
                                 st.error("❌ No se encontró una columna para NUMERO/ID")
-                            elif col_ubicacion is None:
-                                st.error("❌ No se encontró una columna para UBICACION/RACK")
                             else:
                                 total_filas = len(df_in)
                                 barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders... / {total_filas}개 홀더 로드 시작...")
@@ -970,16 +988,32 @@ def admin():
                                 
                                 for i, (_, f) in enumerate(df_in.iterrows()):
                                     numero = str(f.get(col_numero, '')).strip().upper()
-                                    ubicacion = str(f.get(col_ubicacion, '')).strip().upper()
                                     
                                     if not numero:
                                         continue
                                     
+                                    # Leer cantidad (QTY)
+                                    cantidad = 0
+                                    if col_qty:
+                                        try:
+                                            qty_val = str(f.get(col_qty, '0')).strip()
+                                            qty_val = re.sub(r'[^\d-]', '', qty_val)
+                                            cantidad = int(float(qty_val)) if qty_val else 0
+                                        except:
+                                            cantidad = 0
+                                    
+                                    # Leer ubicación (RACK)
+                                    ubicacion = "SIN UBICACION"
+                                    if col_rack:
+                                        ubicacion = str(f.get(col_rack, 'SIN UBICACION')).strip().upper()
+                                        if not ubicacion:
+                                            ubicacion = "SIN UBICACION"
+                                    
                                     db.collection(dest).add({
                                         "nombre": numero,
                                         "item": numero,
-                                        "cantidad": 0,
-                                        "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
+                                        "cantidad": cantidad,
+                                        "ubicacion": ubicacion,
                                         "foto_url": "NO FOTO",
                                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
                                         "registrado_por": st.session_state.user if st.session_state.user else "ADMIN",
@@ -993,9 +1027,14 @@ def admin():
                                 barra_progreso.empty()
                                 obtener_inventario.clear() 
                                 st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
+                                if col_qty:
+                                    st.info(f"📊 Cantidad (QTY) leída desde columna: {col_qty}")
+                                if col_rack:
+                                    st.info(f"📍 Ubicación (RACK) leída desde columna: {col_rack}")
                                 st.balloons()
                         
                         else:
+                            # MATERIALES - carga normal con todas las columnas
                             col_nombre = None
                             col_id = None
                             col_cantidad = None
@@ -1007,11 +1046,11 @@ def admin():
                                     col_nombre = col
                                 if col in ['ID', 'CODIGO', 'CODE']:
                                     col_id = col
-                                if col in ['CANTIDAD', 'STOCK']:
+                                if col in ['CANTIDAD', 'STOCK', 'QTY']:
                                     col_cantidad = col
-                                if col in ['UBICACION', 'UBICACIÓN']:
+                                if col in ['UBICACION', 'UBICACIÓN', 'RACK']:
                                     col_ubicacion = col
-                                if col in ['FOTO', 'URL']:
+                                if col in ['FOTO', 'URL', 'IMAGEN']:
                                     col_foto = col
                             
                             if col_nombre is None or col_id is None:
