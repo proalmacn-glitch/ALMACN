@@ -9,6 +9,7 @@ import re
 import urllib.parse
 import io
 import unicodedata 
+import time
 from PIL import Image
 from pyzbar.pyzbar import decode
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
@@ -55,42 +56,62 @@ def obtener_inventario():
     except Exception as e:
         return []
 
-# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
-def obtener_url_final(url):
-    if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0", ""]:
-        return None
-    url_limpia = str(url).strip()
-    if "drive.google.com" in url_limpia:
-        match = re.search(r'(?:id=|d/|file/d/)([-\w]{25,})', url_limpia)
-        if match:
-            return f'https://drive.google.com/uc?export=download&id={match.group(1)}'
-    
-    if not url_limpia.startswith("http"):
-        return None
-        
-    return url_limpia
+# --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
+def normalizar_texto(texto):
+    """Normaliza texto eliminando símbolos y espacios para comparación"""
+    if not texto:
+        return ""
+    texto = str(texto).upper().strip()
+    # Reemplazar símbolos comunes por espacios
+    for simbolo in ['/', '|', '-', '_', '.', ',', ';', ':', '#', '$', '%', '&', '*', '(', ')', '[', ']', '{', '}', '\\', '=', '+']:
+        texto = texto.replace(simbolo, ' ')
+    # Eliminar espacios múltiples y trim
+    texto = ' '.join(texto.split())
+    return texto
 
-# --- MOTOR DE ESCANEO DE QR (con pyzbar) / QR 스캐너 엔진 ---
-def decodificar_qr(foto):
-    try:
-        foto.seek(0)
-        img = Image.open(foto)
+def buscar_coincidencia_por_qr(texto_qr, inventario_total):
+    """Busca coincidencias entre el texto del QR y los items en inventario"""
+    if not texto_qr:
+        return None, None
+    
+    texto_normalizado_qr = normalizar_texto(texto_qr)
+    palabras_qr = set(texto_normalizado_qr.split())
+    
+    coincidencias = []
+    
+    for item in inventario_total:
+        nombre = str(item.get('nombre', '')).upper()
+        item_id = str(item.get('item', '')).upper()
         
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
+        # Buscar coincidencia exacta primero
+        if texto_qr == nombre or texto_qr == item_id:
+            return item, 100  # Coincidencia exacta
         
-        codigos = decode(img)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
+        # Buscar coincidencia normalizada
+        nombre_normalizado = normalizar_texto(nombre)
+        id_normalizado = normalizar_texto(item_id)
         
-        img_gray = img.convert('L')
-        codigos = decode(img_gray)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
-            
-    except Exception as e:
-        return None
-    return None
+        if texto_normalizado_qr == nombre_normalizado or texto_normalizado_qr == id_normalizado:
+            return item, 95
+        
+        # Buscar por palabras clave
+        palabras_nombre = set(nombre_normalizado.split())
+        palabras_id = set(id_normalizado.split())
+        
+        coincidencia_nombre = len(palabras_qr.intersection(palabras_nombre))
+        coincidencia_id = len(palabras_qr.intersection(palabras_id))
+        
+        max_coincidencia = max(coincidencia_nombre, coincidencia_id)
+        if max_coincidencia > 0:
+            porcentaje = int((max_coincidencia / max(len(palabras_qr), 1)) * 100)
+            if porcentaje >= 30:  # Al menos 30% de coincidencia
+                coincidencias.append((item, porcentaje))
+    
+    if coincidencias:
+        coincidencias.sort(key=lambda x: x[1], reverse=True)
+        return coincidencias[0][0], coincidencias[0][1]
+    
+    return None, None
 
 def ir(acc, cat):
     st.session_state.accion = acc
@@ -184,6 +205,40 @@ def generar_pdf_etiquetas(nombres, ids):
     doc.build(story)
     output.seek(0)
     return output
+
+# --- FUNCIÓN PARA ACTUALIZAR UBICACIÓN (SOLO YAKO) ---
+def actualizar_ubicacion(item_id, categoria, nueva_ubicacion):
+    """Actualiza la ubicación de un material/holder directamente en Firestore"""
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        for doc in docs:
+            db.collection(categoria).document(doc.id).update({"ubicacion": nueva_ubicacion.upper()})
+        return True
+    except Exception as e:
+        st.error(f"Error al actualizar ubicación: {e}")
+        return False
+
+# --- MOTOR DE ESCANEO DE QR (con pyzbar) / QR 스캐너 엔진 ---
+def decodificar_qr(foto):
+    try:
+        foto.seek(0)
+        img = Image.open(foto)
+        
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        codigos = decode(img)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
+        
+        img_gray = img.convert('L')
+        codigos = decode(img_gray)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
+            
+    except Exception as e:
+        return None
+    return None
 
 # --- ESTILOS VISUALES / 시각적 스타일 ---
 st.markdown("""
@@ -341,30 +396,32 @@ def buscar():
     ubicacion_raw = ""
     
     if busqueda:
-        inventario_total = obtener_inventario()
-        coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
-        
-        if coincidencias:
-            if len(coincidencias) > 1:
-                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
+        with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
+            time.sleep(0.5)
+            inventario_total = obtener_inventario()
+            coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
+            
+            if coincidencias:
+                if len(coincidencias) > 1:
+                    st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
+                    
+                opciones = list(set([c['label'] for c in coincidencias])) 
+                seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
+                item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
                 
-            opciones = list(set([c['label'] for c in coincidencias])) 
-            seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
-            item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
-            
-            id_f = item_seleccionado.get('item')
-            col_f = item_seleccionado['cat_db']
-            nombre_item = item_seleccionado.get('nombre', '')
-            ubicacion_raw = item_seleccionado.get('ubicacion', '')
-            
-            if col_f == "holders":
-                rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
-                rack_highlight = rack_match.group(1) if rack_match else None
-            
-            stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
-            foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
-        else:
-            st.warning("No se encontraron resultados / 결과 없음")
+                id_f = item_seleccionado.get('item')
+                col_f = item_seleccionado['cat_db']
+                nombre_item = item_seleccionado.get('nombre', '')
+                ubicacion_raw = item_seleccionado.get('ubicacion', '')
+                
+                if col_f == "holders":
+                    rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
+                    rack_highlight = rack_match.group(1) if rack_match else None
+                
+                stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
+                foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
+            else:
+                st.warning("No se encontraron resultados / 결과 없음")
     
     if item_seleccionado and col_f == "holders":
         st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
@@ -401,6 +458,30 @@ def buscar():
         col1, col2 = st.columns(2)
         col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
         col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
+        
+        # === SOLO YAKO: MODIFICAR UBICACIÓN DIRECTAMENTE ===
+        if st.session_state.user == "YAKO":
+            st.markdown("---")
+            st.markdown("<h4 style='text-align: center; color: #FFD700;'>📍 CAMBIAR UBICACIÓN (SOLO YAKO) / 위치 변경 (YAKO만 가능)</h4>", unsafe_allow_html=True)
+            col_ubi1, col_ubi2, col_ubi3 = st.columns([0.5, 0.3, 0.2])
+            with col_ubi1:
+                nueva_ubicacion = st.text_input("NUEVA UBICACIÓN / 새 위치", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
+            with col_ubi2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("🔄 ACTUALIZAR / 업데이트", key="btn_actualizar_ubicacion"):
+                    if nueva_ubicacion and nueva_ubicacion != ubicacion_raw:
+                        with st.spinner("Actualizando ubicación... / 위치 업데이트 중..."):
+                            time.sleep(0.5)
+                            if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
+                                st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()} / 위치가 업데이트되었습니다.")
+                                st.balloons()
+                                time.sleep(1)
+                                st.rerun()
+                    elif not nueva_ubicacion:
+                        st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
+            with col_ubi3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.caption(f"Actual: {ubicacion_raw}")
         
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
@@ -454,17 +535,36 @@ def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
-    with st.expander("📷 CÁMARA QR / QR 카메라"):
-        cam = st.camera_input("SCAN", key="qr_cam_input") 
+    # --- ESCANEO QR CON BÚSQUEDA INTELIGENTE ---
+    with st.expander("📷 CÁMARA QR / QR 카메라 - Escanea cualquier QR / 모든 QR 스캔"):
+        cam = st.camera_input("SCAN / 스캔", key="qr_cam_input")
         if cam:
-            res = decodificar_qr(cam)
-            if res:
-                texto_qr_limpio = res.strip()
-                if st.session_state.get("busqueda_input", "") != texto_qr_limpio:
-                    st.session_state["busqueda_input"] = texto_qr_limpio
-                    st.rerun()
-            else:
-                st.warning("⚠️ No se detectó un QR claro. Intenta acercarlo, quitar reflejos o mejorar la luz.")
+            with st.spinner("📷 Escaneando QR... / QR 스캔 중..."):
+                time.sleep(0.3)
+                res = decodificar_qr(cam)
+                if res:
+                    st.success(f"✅ QR detectado: {res} / QR 감지됨")
+                    
+                    with st.spinner("🔍 Buscando coincidencias en la base de datos... / 데이터베이스에서 일치 항목 검색 중..."):
+                        time.sleep(0.5)
+                        inventario_total = obtener_inventario()
+                        item_encontrado, porcentaje = buscar_coincidencia_por_qr(res, inventario_total)
+                        
+                        if item_encontrado:
+                            st.balloons()
+                            st.success(f"🎯 ¡COINCIDENCIA ENCONTRADA! / 일치 항목 발견! - {porcentaje}% match")
+                            st.info(f"📦 Material/Holder encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
+                            
+                            # Autocompletar el campo de búsqueda
+                            texto_busqueda = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
+                            if st.session_state.get("busqueda_input", "") != texto_busqueda:
+                                st.session_state["busqueda_input"] = texto_busqueda
+                                st.rerun()
+                        else:
+                            st.warning("⚠️ No se encontraron coincidencias en la base de datos / 데이터베이스에서 일치 항목을 찾을 수 없습니다.")
+                            st.info(f"Texto del QR: {res}")
+                else:
+                    st.error("⚠️ No se detectó un QR claro. Intenta acercarlo, quitar reflejos o mejorar la luz.")
             
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
     
@@ -473,68 +573,70 @@ def formulario():
     es_nuevo = False
     
     if busqueda_form:
-        termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
-        inventario_total = obtener_inventario()
-        
-        coincidencias = []
-        coincidencia_exacta = None
-        
-        for item in inventario_total:
-            if item['cat_db'] == cat:
-                nom = str(item.get('nombre', '')).upper()
-                idx = str(item.get('item', '')).upper()
-                
-                if termino_busqueda == idx:
-                    coincidencia_exacta = item
-                    break 
-                elif termino_busqueda in nom or termino_busqueda in idx:
-                    coincidencias.append(item)
-        
-        if coincidencia_exacta:
-            coincidencias_unicas = [coincidencia_exacta]
-        else:
-            coincidencias_unicas = []
-            vistos = set()
-            for c in coincidencias:
-                if c['label'] not in vistos:
-                    vistos.add(c['label'])
-                    coincidencias_unicas.append(c)
-                    
-        coincidencias = coincidencias_unicas
-        
-        if acc == "SALIDA":
-            if coincidencias:
-                if len(coincidencias) == 1:
-                    cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
-                    st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
-                else:
-                    opciones = [c['label'] for c in coincidencias]
-                    seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
-                    item_sel = next(c for c in coincidencias if c['label'] == seleccion)
-                    cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
-            else:
-                st.error("⚠️ MATERIAL NO ENCONTRADO.")
-        else:
-            if coincidencias:
-                if len(coincidencias) == 1 and coincidencia_exacta:
-                    opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
-                else:
-                    opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
-                    
-                seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
-                if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": 
-                    es_nuevo = True
-                else:
-                    item_sel = next(c for c in coincidencias if c['label'] == seleccion)
-                    cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
-            else:
-                st.warning("⚠️ No encontrado. Se registrará como NUEVO MATERIAL.")
-                es_nuevo = True
+        with st.spinner("🔍 Buscando en inventario... / 재고 검색 중..."):
+            time.sleep(0.3)
+            termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
+            inventario_total = obtener_inventario()
             
-            if es_nuevo:
-                nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
-                nuevo_nom = st.text_input("NOMBRE DEL MATERIAL / 자재 이름").upper().strip()
-                cod_final, nombre_final = nuevo_id, nuevo_nom
+            coincidencias = []
+            coincidencia_exacta = None
+            
+            for item in inventario_total:
+                if item['cat_db'] == cat:
+                    nom = str(item.get('nombre', '')).upper()
+                    idx = str(item.get('item', '')).upper()
+                    
+                    if termino_busqueda == idx:
+                        coincidencia_exacta = item
+                        break 
+                    elif termino_busqueda in nom or termino_busqueda in idx:
+                        coincidencias.append(item)
+            
+            if coincidencia_exacta:
+                coincidencias_unicas = [coincidencia_exacta]
+            else:
+                coincidencias_unicas = []
+                vistos = set()
+                for c in coincidencias:
+                    if c['label'] not in vistos:
+                        vistos.add(c['label'])
+                        coincidencias_unicas.append(c)
+                        
+            coincidencias = coincidencias_unicas
+            
+            if acc == "SALIDA":
+                if coincidencias:
+                    if len(coincidencias) == 1:
+                        cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
+                        st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
+                    else:
+                        opciones = [c['label'] for c in coincidencias]
+                        seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
+                        item_sel = next(c for c in coincidencias if c['label'] == seleccion)
+                        cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
+                else:
+                    st.error("⚠️ MATERIAL NO ENCONTRADO.")
+            else:
+                if coincidencias:
+                    if len(coincidencias) == 1 and coincidencia_exacta:
+                        opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                    else:
+                        opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                        
+                    seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
+                    if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": 
+                        es_nuevo = True
+                    else:
+                        item_sel = next(c for c in coincidencias if c['label'] == seleccion)
+                        cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
+                else:
+                    st.warning("⚠️ No encontrado. Se registrará como NUEVO MATERIAL.")
+                    es_nuevo = True
+                
+                if es_nuevo:
+                    nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
+                    nuevo_nom = st.text_input("NOMBRE DEL MATERIAL / 자재 이름").upper().strip()
+                    cod_final, nombre_final = nuevo_id, nuevo_nom
 
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
@@ -566,7 +668,7 @@ def formulario():
             fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             
             if foto_evidencia:
-                with st.spinner("Subiendo evidencia..."):
+                with st.spinner("📤 Subiendo evidencia... / 증거 업로드 중..."):
                     nombre_archivo = f"evidencias/EVIDENCIA_{nombre_final}_{linea_uso}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg".replace(" ", "_")
                     bucket = storage.bucket()
                     blob = bucket.blob(nombre_archivo)
@@ -574,18 +676,20 @@ def formulario():
                     blob.make_public()
                     url_foto_final = blob.public_url
 
-            db.collection(cat).add({
-                "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
-                "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
-                "solicitante": solicitante, "linea_uso": linea_uso,
-                "evidencia_url": url_foto_final,
-                "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
-            })
-            obtener_inventario.clear() 
-            st.session_state.pop('busqueda_input', None)
-            st.success("✅ REGISTRADO CON ÉXITO")
-            st.balloons()
-            st.rerun() 
+            with st.spinner("💾 Guardando registro... / 등록 저장 중..."):
+                db.collection(cat).add({
+                    "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
+                    "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
+                    "solicitante": solicitante, "linea_uso": linea_uso,
+                    "evidencia_url": url_foto_final,
+                    "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
+                })
+                obtener_inventario.clear() 
+                st.session_state.pop('busqueda_input', None)
+                st.success("✅ REGISTRADO CON ÉXITO")
+                st.balloons()
+                time.sleep(1)
+                st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
             st.session_state.pop('busqueda_input', None)
@@ -635,32 +739,33 @@ def admin():
     with t2:
         ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
         if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
-            data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
-            if data:
-                for d in data:
-                    d['nombre'] = d.get('nombre', 'SIN NOMBRE')
-                    d['item'] = d.get('item', 'SIN ID')
-                    
-                df = pd.DataFrame(data)
-                
-                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
-                    if col not in df.columns:
-                        df[col] = ''
+            with st.spinner("Generando reporte... / 보고서 생성 중..."):
+                data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
+                if data:
+                    for d in data:
+                        d['nombre'] = d.get('nombre', 'SIN NOMBRE')
+                        d['item'] = d.get('item', 'SIN ID')
                         
-                df = df.rename(columns={
-                    'fecha': 'FECHA / 날짜',
-                    'item': 'ID',
-                    'nombre': 'NOMBRE / 이름',
-                    'cantidad': 'CANTIDAD / 수량',
-                    'ubicacion': 'UBICACIÓN / 위치',
-                    'solicitante': 'SOLICITANTE / 신청자',
-                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
-                    'evidencia_url': 'EVIDENCIA / 증거',
-                    'registrado_por': 'USUARIO / 사용자'
-                })
-                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
-                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                    df = pd.DataFrame(data)
+                    
+                    for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
+                        if col not in df.columns:
+                            df[col] = ''
+                            
+                    df = df.rename(columns={
+                        'fecha': 'FECHA / 날짜',
+                        'item': 'ID',
+                        'nombre': 'NOMBRE / 이름',
+                        'cantidad': 'CANTIDAD / 수량',
+                        'ubicacion': 'UBICACIÓN / 위치',
+                        'solicitante': 'SOLICITANTE / 신청자',
+                        'linea_uso': 'LÍNEA_USO / 사용 라인', 
+                        'evidencia_url': 'EVIDENCIA / 증거',
+                        'registrado_por': 'USUARIO / 사용자'
+                    })
+                    cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
+                    csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
+                    st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
                 
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
@@ -677,118 +782,119 @@ def admin():
         if arch:
             if st.button("🚀 INICIAR CARGA / 로드 시작"):
                 try:
-                    df_in = pd.read_excel(arch, engine='openpyxl')
-                    df_in = df_in.fillna('')
-                    
-                    def limpiar_columna(col):
-                        c = str(col).split('/')[0].strip().upper()
-                        c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
-                        return c
-                    
-                    df_in.columns = [limpiar_columna(c) for c in df_in.columns]
-                    
-                    st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
-                    
-                    if dest == "holders":
-                        col_numero = None
-                        col_ubicacion = None
+                    with st.spinner("Procesando archivo... / 파일 처리 중..."):
+                        df_in = pd.read_excel(arch, engine='openpyxl')
+                        df_in = df_in.fillna('')
                         
-                        for col in df_in.columns:
-                            if col in ['NUMERO', 'NUM', 'ID', 'HOLDER', 'HOLDER_ID', 'CODIGO']:
-                                col_numero = col
-                            if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION', 'LOCATION']:
-                                col_ubicacion = col
+                        def limpiar_columna(col):
+                            c = str(col).split('/')[0].strip().upper()
+                            c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
+                            return c
                         
-                        if col_numero is None:
-                            st.error("❌ No se encontró una columna para NUMERO/ID")
-                        elif col_ubicacion is None:
-                            st.error("❌ No se encontró una columna para UBICACION/RACK")
+                        df_in.columns = [limpiar_columna(c) for c in df_in.columns]
+                        
+                        st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
+                        
+                        if dest == "holders":
+                            col_numero = None
+                            col_ubicacion = None
+                            
+                            for col in df_in.columns:
+                                if col in ['NUMERO', 'NUM', 'ID', 'HOLDER', 'HOLDER_ID', 'CODIGO']:
+                                    col_numero = col
+                                if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION', 'LOCATION']:
+                                    col_ubicacion = col
+                            
+                            if col_numero is None:
+                                st.error("❌ No se encontró una columna para NUMERO/ID")
+                            elif col_ubicacion is None:
+                                st.error("❌ No se encontró una columna para UBICACION/RACK")
+                            else:
+                                total_filas = len(df_in)
+                                barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders... / {total_filas}개 홀더 로드 시작...")
+                                registros_cargados = 0
+                                
+                                for i, (_, f) in enumerate(df_in.iterrows()):
+                                    numero = str(f.get(col_numero, '')).strip().upper()
+                                    ubicacion = str(f.get(col_ubicacion, '')).strip().upper()
+                                    
+                                    if not numero:
+                                        continue
+                                    
+                                    db.collection(dest).add({
+                                        "nombre": numero,
+                                        "item": numero,
+                                        "cantidad": 0,
+                                        "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
+                                        "foto_url": "NO FOTO",
+                                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                    })
+                                    registros_cargados += 1
+                                    barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
+                                
+                                barra_progreso.empty()
+                                obtener_inventario.clear() 
+                                st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
+                                st.balloons()
+                        
                         else:
-                            total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders... / {total_filas}개 홀더 로드 시작...")
-                            registros_cargados = 0
+                            col_nombre = None
+                            col_id = None
+                            col_cantidad = None
+                            col_ubicacion = None
+                            col_foto = None
                             
-                            for i, (_, f) in enumerate(df_in.iterrows()):
-                                numero = str(f.get(col_numero, '')).strip().upper()
-                                ubicacion = str(f.get(col_ubicacion, '')).strip().upper()
-                                
-                                if not numero:
-                                    continue
-                                
-                                db.collection(dest).add({
-                                    "nombre": numero,
-                                    "item": numero,
-                                    "cantidad": 0,
-                                    "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
-                                    "foto_url": "NO FOTO",
-                                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
-                                })
-                                registros_cargados += 1
-                                barra_progreso.progress((i + 1) / total_filas)
+                            for col in df_in.columns:
+                                if col in ['NOMBRE', 'NAME', 'PRODUCTO']:
+                                    col_nombre = col
+                                if col in ['ID', 'CODIGO', 'CODE']:
+                                    col_id = col
+                                if col in ['CANTIDAD', 'STOCK']:
+                                    col_cantidad = col
+                                if col in ['UBICACION', 'UBICACIÓN']:
+                                    col_ubicacion = col
+                                if col in ['FOTO', 'URL']:
+                                    col_foto = col
                             
-                            barra_progreso.empty()
-                            obtener_inventario.clear() 
-                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
-                            st.balloons()
-                    
-                    else:
-                        col_nombre = None
-                        col_id = None
-                        col_cantidad = None
-                        col_ubicacion = None
-                        col_foto = None
-                        
-                        for col in df_in.columns:
-                            if col in ['NOMBRE', 'NAME', 'PRODUCTO']:
-                                col_nombre = col
-                            if col in ['ID', 'CODIGO', 'CODE']:
-                                col_id = col
-                            if col in ['CANTIDAD', 'STOCK']:
-                                col_cantidad = col
-                            if col in ['UBICACION', 'UBICACIÓN']:
-                                col_ubicacion = col
-                            if col in ['FOTO', 'URL']:
-                                col_foto = col
-                        
-                        if col_nombre is None or col_id is None:
-                            st.error("❌ Para MATERIALES se necesitan NOMBRE e ID")
-                        else:
-                            total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales... / {total_filas}개 자재 로드 시작...")
-                            registros_cargados = 0
-                            
-                            for i, (_, f) in enumerate(df_in.iterrows()):
-                                nombre = str(f.get(col_nombre, '')).strip().upper()
-                                item_id = str(f.get(col_id, '')).strip().upper()
+                            if col_nombre is None or col_id is None:
+                                st.error("❌ Para MATERIALES se necesitan NOMBRE e ID")
+                            else:
+                                total_filas = len(df_in)
+                                barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales... / {total_filas}개 자재 로드 시작...")
+                                registros_cargados = 0
                                 
-                                if not nombre or not item_id:
-                                    continue
+                                for i, (_, f) in enumerate(df_in.iterrows()):
+                                    nombre = str(f.get(col_nombre, '')).strip().upper()
+                                    item_id = str(f.get(col_id, '')).strip().upper()
+                                    
+                                    if not nombre or not item_id:
+                                        continue
+                                    
+                                    cantidad_raw = str(f.get(col_cantidad, '0')) if col_cantidad else '0'
+                                    cantidad_limpia = re.sub(r'\D', '', cantidad_raw)
+                                    cantidad_final = int(cantidad_limpia) if cantidad_limpia else 0
+                                    
+                                    ubicacion = str(f.get(col_ubicacion, 'ALM')).strip().upper() if col_ubicacion else 'ALM'
+                                    foto_url = str(f.get(col_foto, 'NO FOTO')) if col_foto else 'NO FOTO'
+                                    
+                                    db.collection(dest).add({
+                                        "nombre": nombre,
+                                        "item": item_id,
+                                        "cantidad": cantidad_final,
+                                        "ubicacion": ubicacion,
+                                        "foto_url": foto_url,
+                                        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                    })
+                                    registros_cargados += 1
+                                    barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
                                 
-                                cantidad_raw = str(f.get(col_cantidad, '0')) if col_cantidad else '0'
-                                cantidad_limpia = re.sub(r'\D', '', cantidad_raw)
-                                cantidad_final = int(cantidad_limpia) if cantidad_limpia else 0
+                                barra_progreso.empty()
+                                obtener_inventario.clear() 
+                                st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales registrados / {registros_cargados}개 자재 등록됨")
+                                st.balloons()
                                 
-                                ubicacion = str(f.get(col_ubicacion, 'ALM')).strip().upper() if col_ubicacion else 'ALM'
-                                foto_url = str(f.get(col_foto, 'NO FOTO')) if col_foto else 'NO FOTO'
-                                
-                                db.collection(dest).add({
-                                    "nombre": nombre,
-                                    "item": item_id,
-                                    "cantidad": cantidad_final,
-                                    "ubicacion": ubicacion,
-                                    "foto_url": foto_url,
-                                    "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                    "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
-                                })
-                                registros_cargados += 1
-                                barra_progreso.progress((i + 1) / total_filas)
-                            
-                            barra_progreso.empty()
-                            obtener_inventario.clear() 
-                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales registrados / {registros_cargados}개 자재 등록됨")
-                            st.balloons()
-                            
                 except Exception as e:
                     st.error(f"⚠️ Error: {e}")
             
@@ -816,8 +922,9 @@ def admin():
                     import pytesseract
                     import xlsxwriter
                     
-                    img_pil = Image.open(cam_ocr)
-                    texto_extraido = pytesseract.image_to_string(img_pil).strip()
+                    with st.spinner("Procesando imagen... / 이미지 처리 중..."):
+                        img_pil = Image.open(cam_ocr)
+                        texto_extraido = pytesseract.image_to_string(img_pil).strip()
                     
                     if texto_extraido:
                         st.success("✅ Texto detectado / 텍스트 감지됨")
@@ -879,6 +986,7 @@ def admin():
                         try:
                             pdf_buffer = generar_pdf_etiquetas(nombres, ids)
                             st.success(f"✅ PDF generado con {len(nombres)} etiquetas / {len(nombres)}개 라벨 생성됨")
+                            st.balloons()
                             st.download_button(
                                 label="📥 DESCARGAR PDF / PDF 다운로드",
                                 data=pdf_buffer,
