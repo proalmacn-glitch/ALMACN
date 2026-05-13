@@ -558,29 +558,35 @@ def buscar():
                     else:
                         st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
             
-            # Fila 3: Posicionar imagen con coordenadas X e Y
+            # Fila 3: Posicionar imagen con coordenadas X e Y y TAMAÑO
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<h5 style='color: #00FF00;'>🖼️ POSICIONAR IMAGEN / 이미지 위치 지정</h5>", unsafe_allow_html=True)
-            col_x1, col_x2, col_x3 = st.columns([0.4, 0.2, 0.4])
+            st.markdown("<h5 style='color: #00FF00;'>🖼️ AJUSTAR IMAGEN / 이미지 조정</h5>", unsafe_allow_html=True)
+            
+            # Controles de coordenadas y tamaño en 3 columnas
+            col_x1, col_y1, col_size1 = st.columns(3)
             with col_x1:
                 nueva_pos_x = st.slider("📍 POSICIÓN X (%)", min_value=0, max_value=100, value=int(pos_x), key="pos_x_slider")
-                st.caption(f"X: {nueva_pos_x}% - 0% = izquierda, 50% = centro, 100% = derecha")
-            with col_x3:
+                st.caption("0% = izquierda, 50% = centro, 100% = derecha")
+            with col_y1:
                 nueva_pos_y = st.slider("📍 POSICIÓN Y (%)", min_value=0, max_value=100, value=int(pos_y), key="pos_y_slider")
-                st.caption(f"Y: {nueva_pos_y}% - 0% = arriba, 50% = centro, 100% = abajo")
+                st.caption("0% = arriba, 50% = centro, 100% = abajo")
+            with col_size1:
+                tamanio_imagen = st.slider("📏 TAMAÑO DE IMAGEN (%)", min_value=20, max_value=100, value=tamanio_img, key="tamanio_slider")
+                st.caption(f"{tamanio_imagen}% del tamaño original")
             
+            # Botón de guardar centrado
             col_btn1, col_btn2, col_btn3 = st.columns([0.35, 0.3, 0.35])
             with col_btn2:
-                if st.button("🎯 GUARDAR POSICIÓN DE IMAGEN / 이미지 위치 저장", key="btn_guardar_posicion"):
-                    if (nueva_pos_x != pos_x or nueva_pos_y != pos_y):
-                        with st.spinner("Guardando posición de imagen... / 이미지 위치 저장 중..."):
-                            if actualizar_posicion(id_f, col_f, nueva_pos_x, nueva_pos_y):
-                                st.success(f"✅ Posición guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%")
+                if st.button("🎯 GUARDAR CONFIGURACIÓN DE IMAGEN / 이미지 설정 저장", key="btn_guardar_posicion"):
+                    if (nueva_pos_x != pos_x or nueva_pos_y != pos_y or tamanio_imagen != tamanio_img):
+                        with st.spinner("Guardando configuración de imagen... / 이미지 설정 저장 중..."):
+                            if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, tamanio_imagen):
+                                st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={tamanio_imagen}%")
                                 st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
-                        st.info("La posición no ha cambiado / 위치가 변경되지 않았습니다.")
+                        st.info("La configuración no ha cambiado / 설정이 변경되지 않았습니다.")
         
         # Alerta de stock bajo
         if stock_total <= 5 and stock_total > 0:
