@@ -231,11 +231,11 @@ def login():
                     st.session_state.page = 'menu'
                 st.rerun()
             else: st.error("Error de credenciales / 자격 증명 오류")
-    with col2:
-        if st.button("REGISTRARSE / 등록"):
-            u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+with col2:
+    if st.button("REGISTRARSE / 등록"):
+        u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
+        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
+        st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
             
     st.divider()
     
