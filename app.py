@@ -73,7 +73,6 @@ def obtener_url_final(url):
 
 # --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
 def normalizar_texto(texto):
-    """Normaliza texto eliminando símbolos y espacios para comparación"""
     if not texto:
         return ""
     texto = str(texto).upper().strip()
@@ -83,7 +82,6 @@ def normalizar_texto(texto):
     return texto
 
 def buscar_coincidencia_por_qr(texto_qr, inventario_total):
-    """Busca coincidencias entre el texto del QR y los items en inventario"""
     if not texto_qr:
         return None
     
@@ -93,18 +91,15 @@ def buscar_coincidencia_por_qr(texto_qr, inventario_total):
         nombre = str(item.get('nombre', '')).upper()
         item_id = str(item.get('item', '')).upper()
         
-        # Buscar coincidencia exacta primero
         if texto_qr == nombre or texto_qr == item_id:
             return item
         
-        # Buscar coincidencia normalizada
         nombre_normalizado = normalizar_texto(nombre)
         id_normalizado = normalizar_texto(item_id)
         
         if texto_normalizado_qr == nombre_normalizado or texto_normalizado_qr == id_normalizado:
             return item
         
-        # Buscar si el texto del QR contiene el ID o viceversa
         if texto_qr in item_id or item_id in texto_qr:
             return item
         if texto_qr in nombre or nombre in texto_qr:
@@ -119,7 +114,7 @@ def ir(acc, cat):
     st.session_state.pop('busqueda_input', None)
     st.rerun()
 
-# --- FUNCIÓN GENERAR PDF ETIQUETAS / 라벨 PDF 생성 함수 ---
+# --- FUNCIÓN GENERAR PDF ETIQUETAS ---
 def generar_pdf_etiquetas(nombres, ids):
     from reportlab.platypus import Flowable
     from reportlab.graphics.shapes import Drawing
@@ -205,19 +200,32 @@ def generar_pdf_etiquetas(nombres, ids):
     output.seek(0)
     return output
 
-# --- FUNCIÓN PARA ACTUALIZAR UBICACIÓN (SOLO YAKO) ---
+# --- FUNCIONES PARA ACTUALIZAR (SOLO YAKO) ---
 def actualizar_ubicacion(item_id, categoria, nueva_ubicacion):
-    """Actualiza la ubicación de un material/holder directamente en Firestore"""
     try:
         docs = db.collection(categoria).where("item", "==", item_id).stream()
+        count = 0
         for doc in docs:
             db.collection(categoria).document(doc.id).update({"ubicacion": nueva_ubicacion.upper()})
-        return True
+            count += 1
+        return count > 0
     except Exception as e:
         st.error(f"Error al actualizar ubicación: {e}")
         return False
 
-# --- MOTOR DE ESCANEO DE QR (con pyzbar) / QR 스캐너 엔진 ---
+def actualizar_stock_directo(item_id, categoria, nuevo_stock):
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        count = 0
+        for doc in docs:
+            db.collection(categoria).document(doc.id).update({"cantidad": nuevo_stock})
+            count += 1
+        return count > 0
+    except Exception as e:
+        st.error(f"Error al actualizar stock: {e}")
+        return False
+
+# --- MOTOR DE ESCANEO DE QR ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
@@ -239,7 +247,7 @@ def decodificar_qr(foto):
         return None
     return None
 
-# --- ESTILOS VISUALES / 시각적 스타일 ---
+# --- ESTILOS VISUALES ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -260,14 +268,16 @@ st.markdown("""
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     
     @keyframes rayo {
-        0% { opacity: 0; transform: scale(0.5); }
-        50% { opacity: 1; transform: scale(1.2); }
-        100% { opacity: 0; transform: scale(0.5); }
+        0% { opacity: 0; transform: scale(0.3) rotate(0deg); }
+        30% { opacity: 1; transform: scale(1.3) rotate(10deg); }
+        60% { opacity: 1; transform: scale(1.1) rotate(-5deg); }
+        100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
     }
     .rayo-animation {
-        animation: rayo 0.5s ease-out;
+        animation: rayo 0.6s ease-out;
         display: inline-block;
-        font-size: 50px;
+        font-size: 60px;
+        text-shadow: 0 0 10px yellow;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -276,7 +286,7 @@ if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'busqueda_input' not in st.session_state: st.session_state.busqueda_input = "" 
 
-# ================= VISTAS / 보기 =================
+# ================= VISTAS =================
 
 def login():
     st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
@@ -433,6 +443,7 @@ def buscar():
             else:
                 st.warning("No se encontraron resultados / 결과 없음")
     
+    # --- MAPA DE RACKS SOLO PARA HOLDERS ---
     if item_seleccionado and col_f == "holders":
         st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
         
@@ -462,36 +473,60 @@ def buscar():
     
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
-        if stock_total <= 5:
-            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
         
         col1, col2 = st.columns(2)
         col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
+        
+        # Mostrar ubicación actual
         col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         
-        # === SOLO YAKO: MODIFICAR UBICACIÓN DIRECTAMENTE ===
+        # === SOLO YAKO: MODIFICAR UBICACIÓN Y STOCK DIRECTAMENTE ===
         if st.session_state.user == "YAKO":
             st.markdown("---")
-            st.markdown("<h4 style='text-align: center; color: #FFD700;'>📍 CAMBIAR UBICACIÓN (SOLO YAKO) / 위치 변경 (YAKO만 가능)</h4>", unsafe_allow_html=True)
-            col_ubi1, col_ubi2, col_ubi3 = st.columns([0.5, 0.3, 0.2])
+            st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO) / 빠른 관리 (YAKO만 가능)</h4>", unsafe_allow_html=True)
+            
+            # Fila 1: Cambiar ubicación
+            col_ubi1, col_ubi2, col_ubi3 = st.columns([0.5, 0.25, 0.25])
             with col_ubi1:
-                nueva_ubicacion = st.text_input("NUEVA UBICACIÓN / 새 위치", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
+                nueva_ubicacion = st.text_input("📍 NUEVA UBICACIÓN / 새 위치", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
             with col_ubi2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🔄 ACTUALIZAR / 업데이트", key="btn_actualizar_ubicacion"):
+                if st.button("🔄 ACTUALIZAR UBICACIÓN / 위치 업데이트", key="btn_actualizar_ubicacion"):
                     if nueva_ubicacion and nueva_ubicacion != ubicacion_raw:
                         with st.spinner("Actualizando ubicación... / 위치 업데이트 중..."):
                             time.sleep(0.5)
                             if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
-                                st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()} / 위치가 업데이트되었습니다.")
+                                st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()}")
                                 st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
-                                time.sleep(0.5)
+                                time.sleep(0.8)
                                 st.rerun()
                     elif not nueva_ubicacion:
-                        st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
-            with col_ubi3:
+                        st.warning("⚠️ Ingrese una nueva ubicación")
+            
+            # Fila 2: Cambiar stock directamente
+            st.markdown("<br>", unsafe_allow_html=True)
+            col_stock1, col_stock2, col_stock3 = st.columns([0.5, 0.25, 0.25])
+            with col_stock1:
+                nuevo_stock_valor = st.number_input("📦 NUEVO STOCK / 새 재고량", min_value=0, value=int(stock_total), key="nuevo_stock_input")
+            with col_stock2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.caption(f"Actual: {ubicacion_raw}")
+                if st.button("💾 ACTUALIZAR STOCK / 재고 업데이트", key="btn_actualizar_stock"):
+                    if nuevo_stock_valor != stock_total:
+                        with st.spinner("Actualizando stock... / 재고 업데이트 중..."):
+                            time.sleep(0.5)
+                            if actualizar_stock_directo(id_f, col_f, nuevo_stock_valor):
+                                st.success(f"✅ Stock actualizado: {stock_total} → {nuevo_stock_valor}")
+                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
+                                time.sleep(0.8)
+                                st.rerun()
+                    else:
+                        st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
+        
+        # Alerta de stock bajo
+        if stock_total <= 5 and stock_total > 0:
+            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
+        elif stock_total <= 0:
+            st.error(f"❌ STOCK AGOTADO: {stock_total} unidades / 재고 없음: {stock_total}개")
         
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
