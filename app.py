@@ -229,6 +229,20 @@ def actualizar_stock_directo(item_id, categoria, nuevo_stock):
         st.error(f"Error al actualizar stock: {e}")
         return False
 
+def actualizar_posicion(item_id, categoria, pos_x, pos_y):
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        count = 0
+        for doc in docs:
+            db.collection(categoria).document(doc.id).update({"pos_x": pos_x, "pos_y": pos_y})
+            count += 1
+        if count > 0:
+            obtener_inventario.clear()
+        return count > 0
+    except Exception as e:
+        st.error(f"Error al actualizar posición: {e}")
+        return False
+
 # --- MOTOR DE ESCANEO DE QR ---
 def decodificar_qr(foto):
     try:
@@ -282,6 +296,17 @@ st.markdown("""
         display: inline-block;
         font-size: 60px;
         text-shadow: 0 0 10px yellow;
+    }
+    
+    .image-container {
+        position: relative;
+        width: 400px;
+        height: 300px;
+        margin: 0 auto;
+    }
+    .positioned-image {
+        position: absolute;
+        transform: translate(-50%, -50%);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -418,6 +443,8 @@ def buscar():
     col_f = ""
     rack_highlight = None
     ubicacion_raw = ""
+    pos_x = 50
+    pos_y = 50
     
     if busqueda:
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
@@ -437,12 +464,13 @@ def buscar():
                 col_f = item_seleccionado['cat_db']
                 nombre_item = item_seleccionado.get('nombre', '')
                 ubicacion_raw = item_seleccionado.get('ubicacion', '')
+                pos_x = item_seleccionado.get('pos_x', 50)
+                pos_y = item_seleccionado.get('pos_y', 50)
                 
                 if col_f == "holders":
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
-                # Calcular stock total sumando todas las entradas y salidas
                 stock_total = 0
                 for item in inventario_total:
                     if item.get('item') == id_f and item.get('cat_db') == col_f:
@@ -483,12 +511,12 @@ def buscar():
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         
-        # Mostrar métricas actuales (se actualizarán después de cada cambio)
+        # Mostrar métricas actuales
         col1, col2 = st.columns(2)
-        metric_stock = col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
-        metric_ubicacion = col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
+        col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
+        col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         
-        # === SOLO YAKO: MODIFICAR UBICACIÓN Y STOCK DIRECTAMENTE ===
+        # === SOLO YAKO: MODIFICAR UBICACIÓN, STOCK Y POSICIÓN ===
         if st.session_state.user == "YAKO":
             st.markdown("---")
             st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO) / 빠른 관리 (YAKO만 가능)</h4>", unsafe_allow_html=True)
@@ -529,6 +557,30 @@ def buscar():
                                 st.rerun()
                     else:
                         st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
+            
+            # Fila 3: Posicionar imagen con coordenadas X e Y
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<h5 style='color: #00FF00;'>🖼️ POSICIONAR IMAGEN / 이미지 위치 지정</h5>", unsafe_allow_html=True)
+            col_x1, col_x2, col_x3 = st.columns([0.4, 0.2, 0.4])
+            with col_x1:
+                nueva_pos_x = st.slider("📍 POSICIÓN X (%)", min_value=0, max_value=100, value=int(pos_x), key="pos_x_slider")
+                st.caption(f"X: {nueva_pos_x}% - 0% = izquierda, 50% = centro, 100% = derecha")
+            with col_x3:
+                nueva_pos_y = st.slider("📍 POSICIÓN Y (%)", min_value=0, max_value=100, value=int(pos_y), key="pos_y_slider")
+                st.caption(f"Y: {nueva_pos_y}% - 0% = arriba, 50% = centro, 100% = abajo")
+            
+            col_btn1, col_btn2, col_btn3 = st.columns([0.35, 0.3, 0.35])
+            with col_btn2:
+                if st.button("🎯 GUARDAR POSICIÓN DE IMAGEN / 이미지 위치 저장", key="btn_guardar_posicion"):
+                    if (nueva_pos_x != pos_x or nueva_pos_y != pos_y):
+                        with st.spinner("Guardando posición de imagen... / 이미지 위치 저장 중..."):
+                            if actualizar_posicion(id_f, col_f, nueva_pos_x, nueva_pos_y):
+                                st.success(f"✅ Posición guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%")
+                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
+                                time.sleep(0.8)
+                                st.rerun()
+                    else:
+                        st.info("La posición no ha cambiado / 위치가 변경되지 않았습니다.")
         
         # Alerta de stock bajo
         if stock_total <= 5 and stock_total > 0:
@@ -537,8 +589,11 @@ def buscar():
             st.error(f"❌ STOCK AGOTADO: {stock_total} unidades / 재고 없음: {stock_total}개")
         
         st.divider()
+        
+        # --- CONTENEDOR CON POSICIONAMIENTO DE IMAGEN ---
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
+        # Generar QR (lado izquierdo)
         nombre_id_qr = f"{nombre_item}/{id_f}"
         nombre_codificado = urllib.parse.quote(nombre_id_qr)
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
@@ -549,10 +604,26 @@ def buscar():
             </div>
         ''', unsafe_allow_html=True)
         
+        # ---- IMAGEN CON POSICIONAMIENTO POR COORDENADAS ----
         if foto_url:
-            st.markdown(f'<div class="photo-right"><img src="{foto_url}" style="width:100%; border-radius:15px;"></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a;">
+                <div style="position: absolute; left: {pos_x}%; top: {pos_y}%; transform: translate(-50%, -50%);">
+                    <img src="{foto_url}" style="max-width: 280px; max-height: 240px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);">
+                </div>
+                <div style="position: absolute; bottom: 5px; right: 10px; font-size: 10px; color: #666;">
+                    X:{pos_x}% Y:{pos_y}%
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+            st.caption("🖱️ Las coordenadas X e Y definen la posición de la imagen dentro del recuadro gris")
         else:
-            st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a; display: flex; align-items: center; justify-content: center;">
+                <span style="color: gray; text-align: center;">Sin foto / 사진 없음<br><span style="font-size: 12px;">Sube una imagen usando el enlace abajo</span></span>
+            </div>
+            ''', unsafe_allow_html=True)
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.user == "YAKO":
@@ -561,6 +632,7 @@ def buscar():
             col_f1, col_f2 = st.columns([0.7, 0.3])
             with col_f1:
                 nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
+                st.caption("Ejemplo: https://ejemplo.com/mi-foto.jpg")
             with col_f2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
@@ -728,12 +800,15 @@ def formulario():
                     url_foto_final = blob.public_url
 
             with st.spinner("💾 Guardando registro... / 등록 저장 중..."):
+                # Al crear nuevo material/holder, guardar posición por defecto
                 db.collection(cat).add({
                     "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
                     "solicitante": solicitante, "linea_uso": linea_uso,
                     "evidencia_url": url_foto_final,
-                    "registrado_por": st.session_state.user if st.session_state.user else "INVITADO"
+                    "registrado_por": st.session_state.user if st.session_state.user else "INVITADO",
+                    "pos_x": 50,
+                    "pos_y": 50
                 })
                 obtener_inventario.clear() 
                 st.session_state.pop('busqueda_input', None)
@@ -879,7 +954,9 @@ def admin():
                                         "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
                                         "foto_url": "NO FOTO",
                                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN",
+                                        "pos_x": 50,
+                                        "pos_y": 50
                                     })
                                     registros_cargados += 1
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
@@ -936,7 +1013,9 @@ def admin():
                                         "ubicacion": ubicacion,
                                         "foto_url": foto_url,
                                         "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
+                                        "registrado_por": st.session_state.user if st.session_state.user else "ADMIN",
+                                        "pos_x": 50,
+                                        "pos_y": 50
                                     })
                                     registros_cargados += 1
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
