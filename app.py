@@ -99,7 +99,7 @@ def ir(acc, cat):
     st.session_state.pop('busqueda_input', None)
     st.rerun()
 
-# --- FUNCIÓN GENERAR PDF ETIQUETAS (estilo código compartido) ---
+# --- FUNCIÓN GENERAR PDF ETIQUETAS ---
 def generar_pdf_etiquetas(nombres, ids):
     from reportlab.platypus import Flowable
     from reportlab.graphics.shapes import Drawing
@@ -230,12 +230,13 @@ def login():
                 else:
                     st.session_state.page = 'menu'
                 st.rerun()
-            else: st.error("Error de credenciales / 자격 증명 오류")
-with col2:
-    if st.button("REGISTRARSE / 등록"):
-        u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-        db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-        st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+            else:
+                st.error("Error de credenciales / 자격 증명 오류")
+    with col2:
+        if st.button("REGISTRARSE / 등록"):
+            u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
+            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
+            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
             
     st.divider()
     
@@ -246,6 +247,10 @@ with col2:
             st.session_state.user = "INVITADO"
             ir("SALIDA", "materiales")
     with c6:
+        if st.button("SALIDA HOLDERS / 홀더 출고"):
+            st.session_state.user = "INVITADO"
+            ir("SALIDA", "holders")
+    
     if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
         if not st.session_state.user:
             st.session_state.user = "INVITADO"
@@ -444,7 +449,8 @@ def buscar():
         else:
             st.session_state.page = 'menu'
         st.rerun()
-        def formulario():
+
+def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
@@ -508,7 +514,7 @@ def buscar():
                     cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
             else:
                 st.error("⚠️ MATERIAL NO ENCONTRADO.")
-        else: # ENTRADA
+        else:
             if coincidencias:
                 if len(coincidencias) == 1 and coincidencia_exacta:
                     opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
@@ -533,7 +539,8 @@ def buscar():
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
     
-    if cant != cant_conf and cant_conf > 0: st.error("⚠️ LAS CANTIDADES NO COINCIDEN")
+    if cant != cant_conf and cant_conf > 0:
+        st.error("⚠️ LAS CANTIDADES NO COINCIDEN")
 
     foto_evidencia = None
     if acc == "SALIDA":
@@ -545,7 +552,7 @@ def buscar():
             
         ubi = "SALIDA"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
-    else: # ENTRADA
+    else:
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
         solicitante, linea_uso = "", ""
         bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final) or (es_nuevo and not nombre_final)
@@ -635,7 +642,27 @@ def admin():
                     d['item'] = d.get('item', 'SIN ID')
                     
                 df = pd.DataFrame(data)
-                    with t3:
+                
+                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
+                    if col not in df.columns:
+                        df[col] = ''
+                        
+                df = df.rename(columns={
+                    'fecha': 'FECHA / 날짜',
+                    'item': 'ID',
+                    'nombre': 'NOMBRE / 이름',
+                    'cantidad': 'CANTIDAD / 수량',
+                    'ubicacion': 'UBICACIÓN / 위치',
+                    'solicitante': 'SOLICITANTE / 신청자',
+                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
+                    'evidencia_url': 'EVIDENCIA / 증거',
+                    'registrado_por': 'USUARIO / 사용자'
+                })
+                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
+                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                
+    with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         st.markdown("""
         <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
@@ -658,7 +685,6 @@ def admin():
                         c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
                         return c
                     
-                    columnas_originales = df_in.columns.tolist()
                     df_in.columns = [limpiar_columna(c) for c in df_in.columns]
                     
                     st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
@@ -674,14 +700,12 @@ def admin():
                                 col_ubicacion = col
                         
                         if col_numero is None:
-                            st.error("❌ No se encontró una columna para NUMERO/ID. Las columnas disponibles son: " + ", ".join(df_in.columns.tolist()))
-                            st.info("Asegúrate de que el Excel tenga una columna llamada: NUMERO, ID, HOLDER_ID o similar")
+                            st.error("❌ No se encontró una columna para NUMERO/ID")
                         elif col_ubicacion is None:
-                            st.error("❌ No se encontró una columna para UBICACION/RACK. Las columnas disponibles son: " + ", ".join(df_in.columns.tolist()))
-                            st.info("Asegúrate de que el Excel tenga una columna llamada: UBICACION, UBICACIÓN, RACK o similar")
+                            st.error("❌ No se encontró una columna para UBICACION/RACK")
                         else:
                             total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders... / {total_filas}개 홀더 로드 시작...")
+                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders...")
                             registros_cargados = 0
                             
                             for i, (_, f) in enumerate(df_in.iterrows()):
@@ -691,10 +715,8 @@ def admin():
                                 if not numero:
                                     continue
                                 
-                                nombre = numero
-                                
                                 db.collection(dest).add({
-                                    "nombre": nombre,
+                                    "nombre": numero,
                                     "item": numero,
                                     "cantidad": 0,
                                     "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
@@ -703,12 +725,11 @@ def admin():
                                     "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                                 })
                                 registros_cargados += 1
-                                porcentaje = (i + 1) / total_filas
-                                barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%) - Cargados: {registros_cargados}")
+                                barra_progreso.progress((i + 1) / total_filas)
                             
                             barra_progreso.empty()
                             obtener_inventario.clear() 
-                            st.success(f"✅ CARGA MASIVA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
+                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados")
                             st.balloons()
                     
                     else:
@@ -719,23 +740,22 @@ def admin():
                         col_foto = None
                         
                         for col in df_in.columns:
-                            if col in ['NOMBRE', 'NAME', 'PRODUCTO', 'MATERIAL']:
+                            if col in ['NOMBRE', 'NAME', 'PRODUCTO']:
                                 col_nombre = col
-                            if col in ['ID', 'CODIGO', 'CODE', 'ITEM']:
+                            if col in ['ID', 'CODIGO', 'CODE']:
                                 col_id = col
-                            if col in ['CANTIDAD', 'STOCK', 'QTY', 'CANT']:
+                            if col in ['CANTIDAD', 'STOCK']:
                                 col_cantidad = col
-                            if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION']:
+                            if col in ['UBICACION', 'UBICACIÓN']:
                                 col_ubicacion = col
-                            if col in ['FOTO', 'URL', 'IMAGEN', 'IMAGE']:
+                            if col in ['FOTO', 'URL']:
                                 col_foto = col
                         
                         if col_nombre is None or col_id is None:
-                            st.error("❌ Para MATERIALES se necesitan las columnas NOMBRE e ID")
-                            st.info("Columnas requeridas: NOMBRE, ID (CANTIDAD y UBICACION son opcionales)")
+                            st.error("❌ Para MATERIALES se necesitan NOMBRE e ID")
                         else:
                             total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales... / {total_filas}개 자재 로드 시작...")
+                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales...")
                             registros_cargados = 0
                             
                             for i, (_, f) in enumerate(df_in.iterrows()):
@@ -746,10 +766,8 @@ def admin():
                                     continue
                                 
                                 cantidad_raw = str(f.get(col_cantidad, '0')) if col_cantidad else '0'
-                                if '.' in cantidad_raw:
-                                    cantidad_raw = cantidad_raw.split('.')[0]
-                                cant_limpia = re.sub(r'\D', '', cantidad_raw)
-                                cantidad_final = int(cant_limpia) if cant_limpia else 0
+                                cantidad_limpia = re.sub(r'\D', '', cantidad_raw)
+                                cantidad_final = int(cantidad_limpia) if cantidad_limpia else 0
                                 
                                 ubicacion = str(f.get(col_ubicacion, 'ALM')).strip().upper() if col_ubicacion else 'ALM'
                                 foto_url = str(f.get(col_foto, 'NO FOTO')) if col_foto else 'NO FOTO'
@@ -764,41 +782,37 @@ def admin():
                                     "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                                 })
                                 registros_cargados += 1
-                                porcentaje = (i + 1) / total_filas
-                                barra_progreso.progress(porcentaje, text=f"⏳ Procesando {i+1} de {total_filas} registros... ({int(porcentaje * 100)}%) - Cargados: {registros_cargados}")
+                                barra_progreso.progress((i + 1) / total_filas)
                             
                             barra_progreso.empty()
                             obtener_inventario.clear() 
-                            st.success(f"✅ CARGA MASIVA COMPLETADA: {registros_cargados} materiales registrados / {registros_cargados}개 자재 등록됨")
+                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales registrados")
                             st.balloons()
                             
                 except Exception as e:
-                    st.error(f"⚠️ Error al procesar el Excel: {e}")
-                    st.info("Asegúrate de haber ejecutado 'pip install openpyxl'")
+                    st.error(f"⚠️ Error: {e}")
             
     if es_yako:
         with t4:
-            st.markdown("<h3>👥 USUARIOS REGISTRADOS / 등록된 사용자</h3>", unsafe_allow_html=True)
             uds = db.collection("USUARIOS").stream()
             for u in uds:
                 ud = u.to_dict()
                 with st.container():
                     st.markdown(f'<div class="user-card">ID: {u.id} | Clave: {ud.get("clave")} | Estado: {ud.get("estado")}</div>', unsafe_allow_html=True)
                     if u.id != "YAKO":
-                        if st.button("BORRAR USUARIO / 사용자 삭제", key=f"d_{u.id}"): 
+                        if st.button("BORRAR USUARIO", key=f"d_{u.id}"): 
                             db.collection("USUARIOS").document(u.id).delete()
                             st.rerun()
 
         with t5:
-            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR) / 텍스트 스캔 🔗</h3>", unsafe_allow_html=True)
-            st.info("Captura una imagen para extraer su texto y descargar un Excel con la foto y el resultado. / 이미지를 캡처하여 텍스트를 추출하고 엑셀을 다운로드하세요.")
+            st.markdown("<h3 style='color:red;'>ESCANEAR TEXTO (OCR)</h3>", unsafe_allow_html=True)
+            st.info("Captura una imagen para extraer texto")
             
-            cam_ocr = st.camera_input("CÁMARA OCR / OCR 카메라", key="cam_ocr")
+            cam_ocr = st.camera_input("CÁMARA OCR", key="cam_ocr")
             
             if cam_ocr:
                 try:
                     import pytesseract
-                    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
                     from PIL import Image
                     import xlsxwriter
                     
@@ -806,8 +820,8 @@ def admin():
                     texto_extraido = pytesseract.image_to_string(img_pil).strip()
                     
                     if texto_extraido:
-                        st.success("✅ Texto detectado / 텍스트 감지됨")
-                        texto_final = st.text_area("TEXTO EXTRAÍDO (Editable) / 추출된 텍스트 (편집 가능)", value=texto_extraido, height=150)
+                        st.success("✅ Texto detectado")
+                        texto_final = st.text_area("TEXTO EXTRAÍDO", value=texto_extraido, height=150)
                         
                         output = io.BytesIO()
                         workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -815,112 +829,89 @@ def admin():
                         
                         worksheet.set_column('A:A', 40)
                         worksheet.set_column('B:B', 60)
-                        cell_format = workbook.add_format({'text_wrap': True, 'valign': 'vcenter'})
-                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3', 'align': 'center', 'border': 1})
+                        cell_format = workbook.add_format({'text_wrap': True})
+                        header_format = workbook.add_format({'bold': True, 'bg_color': '#D3D3D3'})
                         
-                        worksheet.write('A1', 'FOTO CAPTURADA / 캡처된 사진', header_format)
-                        worksheet.write('B1', 'TEXTO DETECTADO / 감지된 텍스트', header_format)
+                        worksheet.write('A1', 'FOTO CAPTURADA', header_format)
+                        worksheet.write('B1', 'TEXTO DETECTADO', header_format)
                         
                         img_data = io.BytesIO(cam_ocr.getvalue())
                         worksheet.insert_image('A2', 'foto.png', {'image_data': img_data, 'x_scale': 0.3, 'y_scale': 0.3})
                         worksheet.write('B2', texto_final, cell_format)
-                        worksheet.set_row(1, 150) 
+                        worksheet.set_row(1, 150)
                         
                         workbook.close()
                         output.seek(0)
                         
                         st.download_button(
-                            label="📥 DESCARGAR EXCEL CON FOTO Y TEXTO / 엑셀 다운로드",
+                            label="📥 DESCARGAR EXCEL",
                             data=output,
                             file_name=f"OCR_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     else:
-                        st.warning("⚠️ No se detectó texto claro en la imagen. Intenta de nuevo con mejor iluminación. / 이미지에서 텍스트를 찾을 수 없습니다. 밝은 곳에서 다시 시도하세요.")
-                        
-                except ImportError:
-                    st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
+                        st.warning("⚠️ No se detectó texto")
                 except Exception as e:
-                    st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
-                    
-                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
-                    if col not in df.columns:
-                        df[col] = ''
-                        
-                df = df.rename(columns={
-                    'fecha': 'FECHA / 날짜',
-                    'item': 'ID',
-                    'nombre': 'NOMBRE / 이름',
-                    'cantidad': 'CANTIDAD / 수량',
-                    'ubicacion': 'UBICACIÓN / 위치',
-                    'solicitante': 'SOLICITANTE / 신청자',
-                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
-                    'evidencia_url': 'EVIDENCIA / 증거',
-                    'registrado_por': 'USUARIO / 사용자'
-                })
-                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
-                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
-                        with t6:
-            st.markdown("<h3 style='color:green;'>🏷️ GENERAR ETIQUETAS QR / QR 라벨 생성</h3>", unsafe_allow_html=True)
-            st.info("Genera un PDF con etiquetas QR para holders/materiales. Cada etiqueta incluye QR, nombre y ID.")
+                    st.error(f"⚠️ Error OCR: {e}")
+        
+        with t6:
+            st.markdown("<h3 style='color:green;'>🏷️ GENERAR ETIQUETAS QR</h3>", unsafe_allow_html=True)
+            st.info("Genera un PDF con etiquetas QR")
             
             col_q1, col_q2 = st.columns(2)
             with col_q1:
-                st.markdown("**📝 NOMBRES / 이름**")
-                nombres_text = st.text_area("Escribe un nombre por línea:", height=200, key="nombres_etiquetas")
+                nombres_text = st.text_area("NOMBRES (uno por línea):", height=200, key="nombres_etiquetas")
             with col_q2:
-                st.markdown("**🔢 IDs / 코드**")
-                ids_text = st.text_area("Escribe un ID por línea:", height=200, key="ids_etiquetas")
+                ids_text = st.text_area("IDs (uno por línea):", height=200, key="ids_etiquetas")
             
-            if st.button("🎨 GENERAR PDF / PDF 생성", type="primary"):
+            if st.button("🎨 GENERAR PDF", type="primary"):
                 nombres = [n.strip().upper() for n in nombres_text.split("\n") if n.strip()]
                 ids = [i.strip().upper() for i in ids_text.split("\n") if i.strip()]
                 
                 if not nombres or not ids:
                     st.error("❌ Debes escribir al menos un nombre y un ID")
                 elif len(nombres) != len(ids):
-                    st.error(f"⚠️ Los nombres y IDs no coinciden en cantidad: {len(nombres)} nombres vs {len(ids)} IDs")
+                    st.error(f"⚠️ Cantidades no coinciden: {len(nombres)} nombres vs {len(ids)} IDs")
                 else:
-                    with st.spinner("Generando PDF con etiquetas... / PDF 생성 중..."):
+                    with st.spinner("Generando PDF..."):
                         try:
                             pdf_buffer = generar_pdf_etiquetas(nombres, ids)
-                            st.success(f"✅ PDF generado con {len(nombres)} etiquetas / {len(nombres)}개 라벨 생성됨")
+                            st.success(f"✅ PDF generado con {len(nombres)} etiquetas")
                             st.download_button(
-                                label="📥 DESCARGAR PDF / PDF 다운로드",
+                                label="📥 DESCARGAR PDF",
                                 data=pdf_buffer,
                                 file_name=f"etiquetas_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                                 mime="application/pdf"
                             )
                         except Exception as e:
-                            st.error(f"❌ Error al generar PDF: {e}")
+                            st.error(f"❌ Error: {e}")
             
             st.markdown("---")
             st.markdown("""
             <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px;">
-                <p style="color: #FFD700;">💡 EJEMPLO / 예시:</p>
-                <p style="color: white;">Nombres:<br>
-                HOLDER PRINCIPAL<br>
-                HOLDER SECUNDARIO<br>
-                HOLDER TERCERO</p>
-                <p style="color: white;">IDs:<br>
-                HD001<br>
-                HD002<br>
-                HD003</p>
+                <p style="color: #FFD700;">💡 EJEMPLO:</p>
+                <p style="color: white;">Nombres:<br>HOLDER1<br>HOLDER2</p>
+                <p style="color: white;">IDs:<br>HD001<br>HD002</p>
             </div>
             """, unsafe_allow_html=True)
                     
     st.markdown("<br><br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
-        if st.button("VOLVER AL MENÚ / 메뉴로 돌아가기"): 
+        if st.button("VOLVER AL MENÚ"):
             st.session_state.page = 'menu'
             st.rerun()
 
 # --- NAVEGACIÓN ---
-if st.session_state.page == 'login': login()
-elif st.session_state.page == 'cambiar_datos': cambiar_datos()
-elif st.session_state.page == 'menu': menu()
-elif st.session_state.page == 'buscar': buscar()
-elif st.session_state.page == 'form': formulario()
-elif st.session_state.page == 'admin': admin()
+if st.session_state.page == 'login':
+    login()
+elif st.session_state.page == 'cambiar_datos':
+    cambiar_datos()
+elif st.session_state.page == 'menu':
+    menu()
+elif st.session_state.page == 'buscar':
+    buscar()
+elif st.session_state.page == 'form':
+    formulario()
+elif st.session_state.page == 'admin':
+    admin()
