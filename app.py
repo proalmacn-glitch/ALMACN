@@ -40,7 +40,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # --- OPTIMIZACIÓN: CACHÉ DE INVENTARIO ---
-@st.cache_data
+@st.cache_data(ttl=5)
 def obtener_inventario():
     datos = []
     try:
@@ -208,6 +208,8 @@ def actualizar_ubicacion(item_id, categoria, nueva_ubicacion):
         for doc in docs:
             db.collection(categoria).document(doc.id).update({"ubicacion": nueva_ubicacion.upper()})
             count += 1
+        if count > 0:
+            obtener_inventario.clear()
         return count > 0
     except Exception as e:
         st.error(f"Error al actualizar ubicación: {e}")
@@ -220,6 +222,8 @@ def actualizar_stock_directo(item_id, categoria, nuevo_stock):
         for doc in docs:
             db.collection(categoria).document(doc.id).update({"cantidad": nuevo_stock})
             count += 1
+        if count > 0:
+            obtener_inventario.clear()
         return count > 0
     except Exception as e:
         st.error(f"Error al actualizar stock: {e}")
@@ -438,7 +442,12 @@ def buscar():
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
-                stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
+                # Calcular stock total sumando todas las entradas y salidas
+                stock_total = 0
+                for item in inventario_total:
+                    if item.get('item') == id_f and item.get('cat_db') == col_f:
+                        stock_total += item.get('cantidad', 0)
+                
                 foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
             else:
                 st.warning("No se encontraron resultados / 결과 없음")
@@ -474,11 +483,10 @@ def buscar():
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         
+        # Mostrar métricas actuales (se actualizarán después de cada cambio)
         col1, col2 = st.columns(2)
-        col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
-        
-        # Mostrar ubicación actual
-        col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
+        metric_stock = col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
+        metric_ubicacion = col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         
         # === SOLO YAKO: MODIFICAR UBICACIÓN Y STOCK DIRECTAMENTE ===
         if st.session_state.user == "YAKO":
@@ -501,7 +509,7 @@ def buscar():
                                 time.sleep(0.8)
                                 st.rerun()
                     elif not nueva_ubicacion:
-                        st.warning("⚠️ Ingrese una nueva ubicación")
+                        st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
             
             # Fila 2: Cambiar stock directamente
             st.markdown("<br>", unsafe_allow_html=True)
@@ -561,7 +569,7 @@ def buscar():
                             docs_update = db.collection(col_f).where("item", "==", id_f).stream()
                             for doc in docs_update:
                                 db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
-                            obtener_inventario.clear() 
+                            obtener_inventario.clear()
                             st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
                             st.rerun()
                     else:
