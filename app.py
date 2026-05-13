@@ -249,8 +249,7 @@ def login():
         if st.button("SALIDA HOLDERS / 홀더 출고"):
             st.session_state.user = "INVITADO"
             ir("SALIDA", "holders")
-    
-    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
+            if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
         if not st.session_state.user:
             st.session_state.user = "INVITADO"
         st.session_state.page = 'buscar'; st.rerun()
@@ -436,8 +435,7 @@ def buscar():
         else:
             st.session_state.page = 'menu'
         st.rerun()
-
-def formulario():
+        def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
@@ -489,10 +487,11 @@ def formulario():
                     
         coincidencias = coincidencias_unicas
         
-if acc == "SALIDA":
-    solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
-    linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
-    # ↑ Estas dos deben empezar en la misma columna exacta
+        if acc == "SALIDA":
+            if coincidencias:
+                if len(coincidencias) == 1:
+                    cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
+                    st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                 else:
                     opciones = [c['label'] for c in coincidencias]
                     seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
@@ -530,10 +529,11 @@ if acc == "SALIDA":
     foto_evidencia = None
     if acc == "SALIDA":
         solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
+        linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
         
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
-linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()          
+            
         ubi = "SALIDA"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else: # ENTRADA
@@ -626,27 +626,7 @@ def admin():
                     d['item'] = d.get('item', 'SIN ID')
                     
                 df = pd.DataFrame(data)
-                
-                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
-                    if col not in df.columns:
-                        df[col] = ''
-                        
-                df = df.rename(columns={
-                    'fecha': 'FECHA / 날짜',
-                    'item': 'ID',
-                    'nombre': 'NOMBRE / 이름',
-                    'cantidad': 'CANTIDAD / 수량',
-                    'ubicacion': 'UBICACIÓN / 위치',
-                    'solicitante': 'SOLICITANTE / 신청자',
-                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
-                    'evidencia_url': 'EVIDENCIA / 증거',
-                    'registrado_por': 'USUARIO / 사용자'
-                })
-                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
-                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
-                
-    with t3:
+                    with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         st.markdown("""
         <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
@@ -669,16 +649,12 @@ def admin():
                         c = ''.join(char for char in unicodedata.normalize('NFKD', c) if unicodedata.category(char) != 'Mn')
                         return c
                     
-                    # Limpiar nombres de columnas (eliminar tildes, etc.)
                     columnas_originales = df_in.columns.tolist()
                     df_in.columns = [limpiar_columna(c) for c in df_in.columns]
                     
-                    # Mostrar columnas encontradas
                     st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
                     
-                    # Para HOLDERS: solo necesitamos NUMERO y UBICACION
                     if dest == "holders":
-                        # Buscar columnas equivalentes (NUMERO, UBICACION)
                         col_numero = None
                         col_ubicacion = None
                         
@@ -706,13 +682,12 @@ def admin():
                                 if not numero:
                                     continue
                                 
-                                # Para holders: el nombre = número
                                 nombre = numero
                                 
                                 db.collection(dest).add({
                                     "nombre": nombre,
                                     "item": numero,
-                                    "cantidad": 0,  # Stock inicial 0
+                                    "cantidad": 0,
                                     "ubicacion": ubicacion if ubicacion else "SIN UBICACION",
                                     "foto_url": "NO FOTO",
                                     "fecha": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -727,8 +702,7 @@ def admin():
                             st.success(f"✅ CARGA MASIVA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
                             st.balloons()
                     
-                    else:  # materiales - carga normal con todas las columnas
-                        # Buscar columnas necesarias para materiales
+                    else:
                         col_nombre = None
                         col_id = None
                         col_cantidad = None
@@ -859,8 +833,26 @@ def admin():
                     st.error("⚠️ Faltan librerías. Por favor ejecuta en tu terminal: pip install pytesseract xlsxwriter pillow")
                 except Exception as e:
                     st.error(f"⚠️ Error de OCR: {e} (Asegúrate de instalar 'Tesseract-OCR' en tu sistema Windows/Mac).")
-        
-        with t6:
+                    
+                for col in ['fecha', 'item', 'nombre', 'cantidad', 'ubicacion', 'solicitante', 'linea_uso', 'evidencia_url', 'registrado_por']:
+                    if col not in df.columns:
+                        df[col] = ''
+                        
+                df = df.rename(columns={
+                    'fecha': 'FECHA / 날짜',
+                    'item': 'ID',
+                    'nombre': 'NOMBRE / 이름',
+                    'cantidad': 'CANTIDAD / 수량',
+                    'ubicacion': 'UBICACIÓN / 위치',
+                    'solicitante': 'SOLICITANTE / 신청자',
+                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
+                    'evidencia_url': 'EVIDENCIA / 증거',
+                    'registrado_por': 'USUARIO / 사용자'
+                })
+                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
+                csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
+                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                        with t6:
             st.markdown("<h3 style='color:green;'>🏷️ GENERAR ETIQUETAS QR / QR 라벨 생성</h3>", unsafe_allow_html=True)
             st.info("Genera un PDF con etiquetas QR para holders/materiales. Cada etiqueta incluye QR, nombre y ID.")
             
