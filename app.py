@@ -489,11 +489,10 @@ def formulario():
                     
         coincidencias = coincidencias_unicas
         
-        if acc == "SALIDA":
-            if coincidencias:
-                if len(coincidencias) == 1:
-                    cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
-                    st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
+if acc == "SALIDA":
+    solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
+    linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
+    # ↑ Estas dos deben empezar en la misma columna exacta
                 else:
                     opciones = [c['label'] for c in coincidencias]
                     seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
@@ -534,7 +533,7 @@ def formulario():
         
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
- linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()            
+linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()          
         ubi = "SALIDA"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else: # ENTRADA
