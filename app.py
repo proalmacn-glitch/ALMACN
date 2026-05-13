@@ -5,12 +5,12 @@ import pandas as pd
 from datetime import datetime
 import os
 import random
-import numpy as np
-import cv2
 import re
 import urllib.parse
 import io
 import unicodedata 
+from PIL import Image
+from pyzbar.pyzbar import decode
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -20,10 +20,10 @@ from reportlab.graphics.shapes import Drawing
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode import qr
 
-# --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
 
-# --- CONEXIÓN FIREBASE / 파이어베이스 연결 ---
+# --- CONEXIÓN FIREBASE ---
 if not firebase_admin._apps:
     try:
         bucket_name = 'almacnn.firebasestorage.app'
@@ -34,7 +34,7 @@ if not firebase_admin._apps:
             cred = credentials.Certificate("Key.json")
             firebase_admin.initialize_app(cred, {'storageBucket': bucket_name})
     except Exception as e:
-        st.error(f"Error Conexión / 연결 오류: {e}")
+        st.error(f"Error Conexión: {e}")
 
 db = firestore.client()
 
@@ -55,7 +55,7 @@ def obtener_inventario():
     except Exception as e:
         return []
 
-# --- UTILIDADES TÉCNICAS / 기술 유틸리티 ---
+# --- UTILIDADES TÉCNICAS ---
 def obtener_url_final(url):
     if not url or str(url).upper() in ["NO FOTO", "NAN", "NONE", "0", ""]:
         return None
@@ -70,25 +70,28 @@ def obtener_url_final(url):
         
     return url_limpia
 
-# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, SIN PYZBAR) ---
+# --- MOTOR DE ESCANEO DE QR (con pyzbar, sin OpenCV) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
-        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
+        img = Image.open(foto)
         
-        detector = cv2.QRCodeDetector()
-        data, bbox, _ = detector.detectAndDecode(img)
-        if data:
-            return str(data).upper()
+        # Convertir a RGB si es necesario
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        data2, _, _ = detector.detectAndDecode(thresh)
-        if data2:
-            return str(data2).upper()
-
-    except Exception as e: 
+        # Decodificar QR con pyzbar
+        codigos = decode(img)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
+        
+        # Intentar con imagen en escala de grises
+        img_gray = img.convert('L')
+        codigos = decode(img_gray)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
+            
+    except Exception as e:
         return None
     return None
 
@@ -185,7 +188,7 @@ def generar_pdf_etiquetas(nombres, ids):
     output.seek(0)
     return output
 
-# --- ESTILOS VISUALES / 시각적 스타일 ---
+# --- ESTILOS VISUALES ---
 st.markdown("""
     <style>
     .stApp { background-color: black; color: white; }
@@ -211,7 +214,7 @@ if 'page' not in st.session_state: st.session_state.page = 'login'
 if 'user' not in st.session_state: st.session_state.user = None
 if 'busqueda_input' not in st.session_state: st.session_state.busqueda_input = "" 
 
-# ================= VISTAS / 보기 =================
+# ================= VISTAS =================
 
 def login():
     st.markdown("<h1>LOGIN / 로그인</h1>", unsafe_allow_html=True)
@@ -231,12 +234,12 @@ def login():
                     st.session_state.page = 'menu'
                 st.rerun()
             else:
-                st.error("Error de credenciales / 자격 증명 오류")
+                st.error("Error de credenciales")
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
             db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+            st.success(f"User temporal: {u} | Pass: {p}")
             
     st.divider()
     
@@ -263,20 +266,19 @@ def login():
 
 def cambiar_datos():
     st.markdown("<h1>ACTUALIZAR DATOS / 데이터 업데이트</h1>", unsafe_allow_html=True)
-    st.info("⚠️ Para continuar, por favor personaliza tu usuario y contraseña. / 계속하려면 사용자 이름과 비밀번호를 설정하세요.")
+    st.info("⚠️ Personaliza tu usuario y contraseña.")
     
     nuevo_u = st.text_input("NUEVO USUARIO / 새 사용자").upper().strip()
     nueva_p = st.text_input("NUEVA CLAVE / 새 비밀번호", type="password").strip()
     
-    st.markdown("<br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
-        if st.button("GUARDAR Y ENTRAR / 저장 및 입장"):
+        if st.button("GUARDAR Y ENTRAR"):
             if nuevo_u and nueva_p:
                 if nuevo_u != st.session_state.user:
                     doc_check = db.collection("USUARIOS").document(nuevo_u).get()
                     if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
+                        st.error("⚠️ Usuario ya existe.")
                         return
                 
                 db.collection("USUARIOS").document(nuevo_u).set({
@@ -288,48 +290,37 @@ def cambiar_datos():
                     
                 st.session_state.user = nuevo_u
                 st.session_state.page = 'menu'
-                st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
+                st.success("✅ Datos actualizados!")
                 st.rerun()
             else:
-                st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
+                st.error("⚠️ Completa ambos campos.")
 
 def menu():
     st.markdown("<h1>ALMACÉN / 창고</h1>", unsafe_allow_html=True)
     usuario_actual = st.session_state.user if st.session_state.user else "INVITADO"
-    st.info(f"HOLA / 안녕하세요: {usuario_actual}")
+    st.info(f"HOLA: {usuario_actual}")
     
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("<h3>MATERIALES / 자재</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA MAT / 자재 입고"):
-            ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 자재 출고"):
-            ir("SALIDA", "materiales")
+        st.markdown("<h3>MATERIALES</h3>", unsafe_allow_html=True)
+        if st.button("ENTRADA MAT"): ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT"): ir("SALIDA", "materiales")
     with c2:
-        st.markdown("<h3>HOLDERS / 홀더</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA HOL / 홀더 입고"):
-            ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 홀더 출고"):
-            ir("SALIDA", "holders")
+        st.markdown("<h3>HOLDERS</h3>", unsafe_allow_html=True)
+        if st.button("ENTRADA HOL"): ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL"): ir("SALIDA", "holders")
     
     st.divider()
     
     col_btn, _ = st.columns([0.4, 0.6])
     with col_btn:
-        if st.button("BUSCAR / 검색"):
-            st.session_state.page = 'buscar'
-            st.rerun()
-        if st.button("PANEL CONTROL / 제어판"):
-            st.session_state.page = 'admin'
-            st.rerun()
-        if st.button("SALIR / 로그아웃"):
-            st.session_state.user = None
-            st.session_state.page = 'login'
-            st.rerun()
+        if st.button("BUSCAR"): st.session_state.page = 'buscar'; st.rerun()
+        if st.button("PANEL CONTROL"): st.session_state.page = 'admin'; st.rerun()
+        if st.button("SALIR"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
 
 def buscar():
-    st.header("BUSCAR MATERIAL / 재료 검색")
-    busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+    st.header("BUSCAR MATERIAL")
+    busqueda = st.text_input("ESCRIBE ID o NOMBRE", key="busqueda_input_buscar").upper().strip()
     
     item_seleccionado = None
     stock_total = 0
@@ -346,10 +337,10 @@ def buscar():
         
         if coincidencias:
             if len(coincidencias) > 1:
-                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
+                st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS.")
                 
             opciones = list(set([c['label'] for c in coincidencias])) 
-            seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
+            seleccion = st.selectbox("RESULTADOS:", opciones)
             item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
             
             id_f = item_seleccionado.get('item')
@@ -364,10 +355,10 @@ def buscar():
             stock_total = sum([d.get('cantidad', 0) for d in inventario_total if d.get('item') == id_f and d.get('cat_db') == col_f])
             foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
         else:
-            st.warning("No se encontraron resultados / 결과 없음")
+            st.warning("No se encontraron resultados")
     
     if item_seleccionado and col_f == "holders":
-        st.subheader("🗺️ MAPA DE RACKS / 랙 지도")
+        st.subheader("🗺️ MAPA DE RACKS")
         
         def rack_color(name):
             return "#8FC360" if (rack_highlight and name == rack_highlight) else "#8B0000"
@@ -394,55 +385,47 @@ def buscar():
         st.markdown(map_html, unsafe_allow_html=True)
     
     if item_seleccionado:
-        st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
+        st.markdown(f"<h2>{nombre_item}</h2>", unsafe_allow_html=True)
         if stock_total <= 5:
-            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
+            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades")
         
         col1, col2 = st.columns(2)
-        col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
-        col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
+        col1.metric("STOCK ACTUAL", max(0, stock_total))
+        col2.metric("UBICACIÓN", ubicacion_raw if ubicacion_raw else "---")
         
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
         nombre_id_qr = f"{nombre_item}/{id_f}"
         nombre_codificado = urllib.parse.quote(nombre_id_qr)
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
-        st.markdown(f'''
-            <div class="qr-left">
-                <img src="{qr_url}" width="150">
-                <div style="margin-top:5px; font-size:12px; color:gray;">QR {nombre_id_qr}</div>
-            </div>
-        ''', unsafe_allow_html=True)
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}"
+        st.markdown(f'<div class="qr-left"><img src="{qr_url}" width="150"><div style="margin-top:5px; font-size:12px;">QR {nombre_id_qr}</div></div>', unsafe_allow_html=True)
         
         if foto_url:
             st.markdown(f'<div class="photo-right"><img src="{foto_url}" style="width:100%; border-radius:15px;"></div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="photo-right" style="text-align:center; color:gray;">Sin foto / 사진 없음</div>', unsafe_allow_html=True)
+            st.markdown('<div class="photo-right">Sin foto</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
         if st.session_state.user == "YAKO":
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
+            st.markdown("<br><h4 style='text-align:center;color:yellow;'>📸 AGREGAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
             col_f1, col_f2 = st.columns([0.7, 0.3])
             with col_f1:
-                nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
+                nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ", key=f"foto_input_{id_f}")
             with col_f2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
+                if st.button("💾 GUARDAR FOTO", key=f"btn_foto_{id_f}"):
                     if nueva_foto_url:
-                        with st.spinner("Guardando en la base de datos... / 저장 중..."):
+                        with st.spinner("Guardando..."):
                             docs_update = db.collection(col_f).where("item", "==", id_f).stream()
                             for doc in docs_update:
                                 db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
-                            obtener_inventario.clear() 
-                            st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
+                            obtener_inventario.clear()
+                            st.success("✅ FOTO ACTUALIZADA")
                             st.rerun()
                     else:
-                        st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
+                        st.warning("⚠️ Pegue un enlace.")
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("VOLVER / 돌아가기"): 
+    if st.button("VOLVER"):
         if st.session_state.user == "INVITADO":
             st.session_state.user = None
             st.session_state.page = 'login'
@@ -454,7 +437,7 @@ def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
-    with st.expander("📷 CÁMARA QR / QR 카메라"):
+    with st.expander("📷 CÁMARA QR"):
         cam = st.camera_input("SCAN", key="qr_cam_input") 
         if cam:
             res = decodificar_qr(cam)
@@ -464,9 +447,9 @@ def formulario():
                     st.session_state["busqueda_input"] = texto_qr_limpio
                     st.rerun()
             else:
-                st.warning("⚠️ No se detectó un QR claro. Intenta acercarlo, quitar reflejos o mejorar la luz.")
+                st.warning("⚠️ No se detectó un QR claro.")
             
-    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
+    busqueda_form = st.text_input("BUSCAR ID O NOMBRE", key="busqueda_input").upper().strip()
     
     cod_final = ""
     nombre_final = ""
@@ -509,7 +492,7 @@ def formulario():
                     st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                 else:
                     opciones = [c['label'] for c in coincidencias]
-                    seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
+                    seleccion = st.selectbox("COINCIDENCIAS:", opciones)
                     item_sel = next(c for c in coincidencias if c['label'] == seleccion)
                     cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
             else:
@@ -517,12 +500,12 @@ def formulario():
         else:
             if coincidencias:
                 if len(coincidencias) == 1 and coincidencia_exacta:
-                    opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                    opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL"]
                 else:
-                    opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
+                    opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL"]
                     
-                seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
-                if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": 
+                seleccion = st.selectbox("SELECCIONA O CREA NUEVO:", opciones)
+                if seleccion == "➕ CREAR NUEVO MATERIAL": 
                     es_nuevo = True
                 else:
                     item_sel = next(c for c in coincidencias if c['label'] == seleccion)
@@ -532,36 +515,34 @@ def formulario():
                 es_nuevo = True
             
             if es_nuevo:
-                nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
-                nuevo_nom = st.text_input("NOMBRE DEL MATERIAL / 자재 이름").upper().strip()
+                nuevo_id = st.text_input("ID DEL MATERIAL", value=termino_busqueda).upper().strip()
+                nuevo_nom = st.text_input("NOMBRE DEL MATERIAL").upper().strip()
                 cod_final, nombre_final = nuevo_id, nuevo_nom
 
-    cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
-    cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
+    cant = st.number_input("CANTIDAD", min_value=1, key="cant1")
+    cant_conf = st.number_input("CONFIRMAR CANTIDAD", min_value=0, key="cant2")
     
     if cant != cant_conf and cant_conf > 0:
         st.error("⚠️ LAS CANTIDADES NO COINCIDEN")
 
     foto_evidencia = None
     if acc == "SALIDA":
-        solicitante = st.text_input("NOMBRE SOLICITANTE / 신청자 이름").upper().strip()
-        linea_uso = st.text_input("LÍNEA EN LA QUE SE UTILIZARÁ / 사용할 라인").upper().strip()
+        solicitante = st.text_input("NOMBRE SOLICITANTE").upper().strip()
+        linea_uso = st.text_input("LÍNEA DE USO").upper().strip()
         
-        with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
+        with st.expander("📸 CAPTURAR EVIDENCIA"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
             
         ubi = "SALIDA"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else:
-        ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
+        ubi = st.text_input("UBICACIÓN").upper().strip()
         solicitante, linea_uso = "", ""
         bloqueado = (cant != cant_conf) or (not ubi) or (not cod_final) or (es_nuevo and not nombre_final)
         
-    st.markdown("<br>", unsafe_allow_html=True)
-    
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
-        if st.button("REGISTRAR / 등록", disabled=bloqueado):
+        if st.button("REGISTRAR", disabled=bloqueado):
             url_foto_final = "SIN EVIDENCIA"
             fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             
@@ -587,28 +568,28 @@ def formulario():
             st.balloons()
             st.rerun() 
         
-        if st.button("VOLVER / 돌아가기"): 
+        if st.button("VOLVER"): 
             st.session_state.pop('busqueda_input', None)
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
 def admin():
-    st.markdown("<h1>PANEL CONTROL / 제어판</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>PANEL CONTROL</h1>", unsafe_allow_html=True)
     
     es_yako = (st.session_state.user == "YAKO")
     
     if es_yako:
-        t1, t2, t3, t4, t5, t6 = st.tabs(["BORRAR / 삭제", "EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드", "USUARIOS / 사용자", "ESCANEAR TEXTO / 텍스트 스캔", "GENERAR ETIQUETAS / 라벨 생성"])
+        t1, t2, t3, t4, t5, t6 = st.tabs(["BORRAR", "EXCEL DETALLADO", "CARGA MASIVA", "USUARIOS", "ESCANEAR TEXTO", "GENERAR ETIQUETAS"])
     else:
-        t2, t3 = st.tabs(["EXCEL DETALLADO / 엑셀", "CARGA MASIVA / 대량 로드"])
+        t2, t3 = st.tabs(["EXCEL DETALLADO", "CARGA MASIVA"])
     
     if es_yako:
         with t1:
-            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK / 재고 삭제 🔗</h3>", unsafe_allow_html=True)
-            cdb = st.selectbox("CATEGORÍA / 카테고리", ["materiales", "holders"])
-            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO) / 특정 ID (모두 삭제하려면 비워 두세요)").upper()
-            if st.checkbox("SÍ, ESTOY SEGURO / 네, 확실합니다"):
-                if st.button("🔴 EJECUTAR BORRADO / 삭제 실행"):
+            st.markdown("<h3 style='color:red;'>BORRADO DE STOCK</h3>", unsafe_allow_html=True)
+            cdb = st.selectbox("CATEGORÍA", ["materiales", "holders"])
+            del_id = st.text_input("ID ESPECÍFICO (DEJAR VACÍO PARA TODO)").upper()
+            if st.checkbox("SÍ, ESTOY SEGURO"):
+                if st.button("🔴 EJECUTAR BORRADO"):
                     if del_id:
                         docs_ref = db.collection(cdb).where("item", "==", del_id).stream()
                     else:
@@ -618,23 +599,20 @@ def admin():
                     total_borrar = len(docs_borrar)
                     
                     if total_borrar == 0:
-                        st.warning("⚠️ No hay registros para borrar. / 삭제할 레코드가 없습니다.")
+                        st.warning("⚠️ No hay registros para borrar.")
                     else:
-                        barra_borrado = st.progress(0, text=f"🗑️ Iniciando borrado de {total_borrar} registros... / {total_borrar}개 레코드 삭제 시작...")
-                        
+                        barra_borrado = st.progress(0, text=f"🗑️ Borrando {total_borrar} registros...")
                         for i, doc in enumerate(docs_borrar):
                             db.collection(cdb).document(doc.id).delete()
-                            porcentaje_borrado = (i + 1) / total_borrar
-                            barra_borrado.progress(porcentaje_borrado, text=f"⏳ Borrando {i+1} de {total_borrar} registros... ({int(porcentaje_borrado * 100)}%)")
-                            
+                            barra_borrado.progress((i+1)/total_borrar)
                         barra_borrado.empty()
-                        obtener_inventario.clear() 
-                        st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros eliminados. / 삭제 완료: {total_borrar}개 레코드 삭제됨.")
+                        obtener_inventario.clear()
+                        st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros.")
                         st.rerun()
                 
     with t2:
-        ce = st.selectbox("REPORTE / 보고서", ["materiales", "holders"])
-        if st.button("📥 GENERAR EXCEL / 엑셀 생성"):
+        ce = st.selectbox("REPORTE", ["materiales", "holders"])
+        if st.button("📥 GENERAR EXCEL"):
             data = [d.to_dict() for d in db.collection(ce).order_by("fecha").stream()]
             if data:
                 for d in data:
@@ -648,34 +626,33 @@ def admin():
                         df[col] = ''
                         
                 df = df.rename(columns={
-                    'fecha': 'FECHA / 날짜',
+                    'fecha': 'FECHA',
                     'item': 'ID',
-                    'nombre': 'NOMBRE / 이름',
-                    'cantidad': 'CANTIDAD / 수량',
-                    'ubicacion': 'UBICACIÓN / 위치',
-                    'solicitante': 'SOLICITANTE / 신청자',
-                    'linea_uso': 'LÍNEA_USO / 사용 라인', 
-                    'evidencia_url': 'EVIDENCIA / 증거',
-                    'registrado_por': 'USUARIO / 사용자'
+                    'nombre': 'NOMBRE',
+                    'cantidad': 'CANTIDAD',
+                    'ubicacion': 'UBICACIÓN',
+                    'solicitante': 'SOLICITANTE',
+                    'linea_uso': 'LÍNEA_USO', 
+                    'evidencia_url': 'EVIDENCIA',
+                    'registrado_por': 'USUARIO'
                 })
-                cols_to_export = [c for c in ['FECHA / 날짜', 'ID', 'NOMBRE / 이름', 'CANTIDAD / 수량', 'UBICACIÓN / 위치', 'SOLICITANTE / 신청자', 'LÍNEA_USO / 사용 라인', 'EVIDENCIA / 증거', 'USUARIO / 사용자'] if c in df.columns]
+                cols_to_export = [c for c in ['FECHA', 'ID', 'NOMBRE', 'CANTIDAD', 'UBICACIÓN', 'SOLICITANTE', 'LÍNEA_USO', 'EVIDENCIA', 'USUARIO'] if c in df.columns]
                 csv = df[cols_to_export].to_csv(index=False).encode('utf-8-sig')
-                st.download_button("Descargar / 다운로드", csv, f"Reporte_{ce}.csv", "text/csv")
+                st.download_button("Descargar", csv, f"Reporte_{ce}.csv", "text/csv")
                 
     with t3:
-        dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
+        dest = st.selectbox("DESTINO", ["materiales", "holders"])
         st.markdown("""
         <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
-            <p style="color: #FFD700; font-weight: bold;">📌 FORMATO ESPERADO PARA HOLDERS:</p>
-            <p style="color: white;">• Columna <span style="color: #00FF00;">NUMERO</span> → ID del holder (ej: HD12345)</p>
-            <p style="color: white;">• Columna <span style="color: #00FF00;">UBICACION</span> → Rack donde está (ej: G1, F2, H1)</p>
-            <p style="color: #FF8888;">⚠️ El campo NOMBRE se copiará automáticamente desde NUMERO</p>
+            <p style="color: #FFD700; font-weight: bold;">📌 FORMATO PARA HOLDERS:</p>
+            <p style="color: white;">• NUMERO → ID del holder</p>
+            <p style="color: white;">• UBICACION → Rack (ej: G1, F2)</p>
         </div>
         """, unsafe_allow_html=True)
         
-        arch = st.file_uploader("Subir .xlsx / .xlsx 업로드", type=['xlsx'])
+        arch = st.file_uploader("Subir .xlsx", type=['xlsx'])
         if arch:
-            if st.button("🚀 INICIAR CARGA / 로드 시작"):
+            if st.button("🚀 INICIAR CARGA"):
                 try:
                     df_in = pd.read_excel(arch, engine='openpyxl')
                     df_in = df_in.fillna('')
@@ -686,7 +663,6 @@ def admin():
                         return c
                     
                     df_in.columns = [limpiar_columna(c) for c in df_in.columns]
-                    
                     st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
                     
                     if dest == "holders":
@@ -694,18 +670,18 @@ def admin():
                         col_ubicacion = None
                         
                         for col in df_in.columns:
-                            if col in ['NUMERO', 'NUM', 'ID', 'HOLDER', 'HOLDER_ID', 'CODIGO']:
+                            if col in ['NUMERO', 'NUM', 'ID', 'HOLDER']:
                                 col_numero = col
-                            if col in ['UBICACION', 'UBICACIÓN', 'RACK', 'POSICION', 'LOCATION']:
+                            if col in ['UBICACION', 'UBICACIÓN', 'RACK']:
                                 col_ubicacion = col
                         
                         if col_numero is None:
-                            st.error("❌ No se encontró una columna para NUMERO/ID")
+                            st.error("❌ No se encontró columna NUMERO/ID")
                         elif col_ubicacion is None:
-                            st.error("❌ No se encontró una columna para UBICACION/RACK")
+                            st.error("❌ No se encontró columna UBICACION/RACK")
                         else:
                             total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} holders...")
+                            barra_progreso = st.progress(0, text=f"🚀 Cargando {total_filas} holders...")
                             registros_cargados = 0
                             
                             for i, (_, f) in enumerate(df_in.iterrows()):
@@ -725,11 +701,11 @@ def admin():
                                     "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                                 })
                                 registros_cargados += 1
-                                barra_progreso.progress((i + 1) / total_filas)
+                                barra_progreso.progress((i+1)/total_filas)
                             
                             barra_progreso.empty()
-                            obtener_inventario.clear() 
-                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados")
+                            obtener_inventario.clear()
+                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders")
                             st.balloons()
                     
                     else:
@@ -740,9 +716,9 @@ def admin():
                         col_foto = None
                         
                         for col in df_in.columns:
-                            if col in ['NOMBRE', 'NAME', 'PRODUCTO']:
+                            if col in ['NOMBRE', 'NAME']:
                                 col_nombre = col
-                            if col in ['ID', 'CODIGO', 'CODE']:
+                            if col in ['ID', 'CODIGO']:
                                 col_id = col
                             if col in ['CANTIDAD', 'STOCK']:
                                 col_cantidad = col
@@ -755,7 +731,7 @@ def admin():
                             st.error("❌ Para MATERIALES se necesitan NOMBRE e ID")
                         else:
                             total_filas = len(df_in)
-                            barra_progreso = st.progress(0, text=f"🚀 Iniciando carga de {total_filas} materiales...")
+                            barra_progreso = st.progress(0, text=f"🚀 Cargando {total_filas} materiales...")
                             registros_cargados = 0
                             
                             for i, (_, f) in enumerate(df_in.iterrows()):
@@ -782,11 +758,11 @@ def admin():
                                     "registrado_por": st.session_state.user if st.session_state.user else "ADMIN"
                                 })
                                 registros_cargados += 1
-                                barra_progreso.progress((i + 1) / total_filas)
+                                barra_progreso.progress((i+1)/total_filas)
                             
                             barra_progreso.empty()
-                            obtener_inventario.clear() 
-                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales registrados")
+                            obtener_inventario.clear()
+                            st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales")
                             st.balloons()
                             
                 except Exception as e:
@@ -813,7 +789,6 @@ def admin():
             if cam_ocr:
                 try:
                     import pytesseract
-                    from PIL import Image
                     import xlsxwriter
                     
                     img_pil = Image.open(cam_ocr)
@@ -856,7 +831,7 @@ def admin():
         
         with t6:
             st.markdown("<h3 style='color:green;'>🏷️ GENERAR ETIQUETAS QR</h3>", unsafe_allow_html=True)
-            st.info("Genera un PDF con etiquetas QR")
+            st.info("Genera PDF con etiquetas QR")
             
             col_q1, col_q2 = st.columns(2)
             with col_q1:
@@ -871,7 +846,7 @@ def admin():
                 if not nombres or not ids:
                     st.error("❌ Debes escribir al menos un nombre y un ID")
                 elif len(nombres) != len(ids):
-                    st.error(f"⚠️ Cantidades no coinciden: {len(nombres)} nombres vs {len(ids)} IDs")
+                    st.error(f"⚠️ Cantidades no coinciden: {len(nombres)} vs {len(ids)}")
                 else:
                     with st.spinner("Generando PDF..."):
                         try:
@@ -885,17 +860,7 @@ def admin():
                             )
                         except Exception as e:
                             st.error(f"❌ Error: {e}")
-            
-            st.markdown("---")
-            st.markdown("""
-            <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px;">
-                <p style="color: #FFD700;">💡 EJEMPLO:</p>
-                <p style="color: white;">Nombres:<br>HOLDER1<br>HOLDER2</p>
-                <p style="color: white;">IDs:<br>HD001<br>HD002</p>
-            </div>
-            """, unsafe_allow_html=True)
                     
-    st.markdown("<br><br>", unsafe_allow_html=True)
     col_v, _ = st.columns([0.4, 0.6])
     with col_v:
         if st.button("VOLVER AL MENÚ"):
