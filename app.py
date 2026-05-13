@@ -246,13 +246,11 @@ def login():
             st.session_state.user = "INVITADO"
             ir("SALIDA", "materiales")
     with c6:
-        if st.button("SALIDA HOLDERS / 홀더 출고"):
-            st.session_state.user = "INVITADO"
-            ir("SALIDA", "holders")
-            if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
+    if st.button("🔍 BUSCAR MATERIAL / 재고 검색"): 
         if not st.session_state.user:
             st.session_state.user = "INVITADO"
-        st.session_state.page = 'buscar'; st.rerun()
+        st.session_state.page = 'buscar'
+        st.rerun()
     
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
@@ -298,20 +296,31 @@ def menu():
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("<h3>MATERIALES / 자재</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA MAT / 자재 입고"): ir("ENTRADA", "materiales")
-        if st.button("SALIDA MAT / 자재 출고"): ir("SALIDA", "materiales")
+        if st.button("ENTRADA MAT / 자재 입고"):
+            ir("ENTRADA", "materiales")
+        if st.button("SALIDA MAT / 자재 출고"):
+            ir("SALIDA", "materiales")
     with c2:
         st.markdown("<h3>HOLDERS / 홀더</h3>", unsafe_allow_html=True)
-        if st.button("ENTRADA HOL / 홀더 입고"): ir("ENTRADA", "holders")
-        if st.button("SALIDA HOL / 홀더 출고"): ir("SALIDA", "holders")
+        if st.button("ENTRADA HOL / 홀더 입고"):
+            ir("ENTRADA", "holders")
+        if st.button("SALIDA HOL / 홀더 출고"):
+            ir("SALIDA", "holders")
     
     st.divider()
     
     col_btn, _ = st.columns([0.4, 0.6])
     with col_btn:
-        if st.button("BUSCAR / 검색"): st.session_state.page = 'buscar'; st.rerun()
-        if st.button("PANEL CONTROL / 제어판"): st.session_state.page = 'admin'; st.rerun()
-        if st.button("SALIR / 로그아웃"): st.session_state.user=None; st.session_state.page='login'; st.rerun()
+        if st.button("BUSCAR / 검색"):
+            st.session_state.page = 'buscar'
+            st.rerun()
+        if st.button("PANEL CONTROL / 제어판"):
+            st.session_state.page = 'admin'
+            st.rerun()
+        if st.button("SALIR / 로그아웃"):
+            st.session_state.user = None
+            st.session_state.page = 'login'
+            st.rerun()
 
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
