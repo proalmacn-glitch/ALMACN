@@ -229,20 +229,6 @@ def actualizar_stock_directo(item_id, categoria, nuevo_stock):
         st.error(f"Error al actualizar stock: {e}")
         return False
 
-def actualizar_posicion(item_id, categoria, pos_x, pos_y):
-    try:
-        docs = db.collection(categoria).where("item", "==", item_id).stream()
-        count = 0
-        for doc in docs:
-            db.collection(categoria).document(doc.id).update({"pos_x": pos_x, "pos_y": pos_y})
-            count += 1
-        if count > 0:
-            obtener_inventario.clear()
-        return count > 0
-    except Exception as e:
-        st.error(f"Error al actualizar posición: {e}")
-        return False
-
 def actualizar_posicion_y_tamanio(item_id, categoria, pos_x, pos_y, tamanio):
     try:
         docs = db.collection(categoria).where("item", "==", item_id).stream()
@@ -260,6 +246,16 @@ def actualizar_posicion_y_tamanio(item_id, categoria, pos_x, pos_y, tamanio):
     except Exception as e:
         st.error(f"Error al actualizar posición/tamaño: {e}")
         return False
+
+# --- OBTENER UBICACIÓN DE UN ITEM ---
+def obtener_ubicacion_item(item_id, categoria):
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        for doc in docs:
+            return doc.to_dict().get('ubicacion', 'SIN UBICACION')
+        return "SIN UBICACION"
+    except Exception as e:
+        return "SIN UBICACION"
 
 # --- MOTOR DE ESCANEO DE QR ---
 def decodificar_qr(foto):
@@ -452,6 +448,34 @@ def menu():
 
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
+    
+    # --- LECTOR QR PARA BUSCAR ---
+    with st.expander("📷 ESCANEAR QR PARA BUSCAR / 검색용 QR 스캔"):
+        cam_qr = st.camera_input("SCAN QR / QR 스캔", key="qr_cam_buscar")
+        if cam_qr:
+            with st.spinner("📷 Escaneando QR... / QR 스캔 중..."):
+                time.sleep(0.3)
+                res = decodificar_qr(cam_qr)
+                if res:
+                    st.success(f"✅ QR detectado: {res} / QR 감지됨")
+                    st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
+                    
+                    with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
+                        time.sleep(0.5)
+                        inventario_total = obtener_inventario()
+                        item_encontrado = buscar_coincidencia_por_qr(res, inventario_total)
+                        
+                        if item_encontrado:
+                            st.info(f"📦 Material/Holder encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
+                            texto_busqueda = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
+                            st.session_state["busqueda_input_buscar"] = texto_busqueda
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ No se encontraron coincidencias / 일치 항목 없음")
+                            st.info(f"Texto del QR: {res}")
+                else:
+                    st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
+    
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
     item_seleccionado = None
@@ -722,6 +746,7 @@ def formulario():
     cod_final = ""
     nombre_final = ""
     es_nuevo = False
+    ubicacion_item = "SIN UBICACION"
     
     if busqueda_form:
         with st.spinner("🔍 Buscando en inventario... / 재고 검색 중..."):
@@ -759,15 +784,18 @@ def formulario():
                 if coincidencias:
                     if len(coincidencias) == 1:
                         cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
+                        # OBTENER LA UBICACIÓN REAL DEL ITEM (no "SALIDA")
+                        ubicacion_item = obtener_ubicacion_item(cod_final, cat)
                         st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                     else:
                         opciones = [c['label'] for c in coincidencias]
                         seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
                         item_sel = next(c for c in coincidencias if c['label'] == seleccion)
                         cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
+                        ubicacion_item = obtener_ubicacion_item(cod_final, cat)
                 else:
                     st.error("⚠️ MATERIAL NO ENCONTRADO.")
-            else:
+            else:  # ENTRADA
                 if coincidencias:
                     if len(coincidencias) == 1 and coincidencia_exacta:
                         opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
@@ -802,8 +830,9 @@ def formulario():
         
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
-            
-        ubi = "SALIDA"
+        
+        # Usar la ubicación real del item en lugar de "SALIDA"
+        ubi = ubicacion_item if ubicacion_item else "SIN UBICACION"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else:
         ubi = st.text_input("UBICACIÓN / 위치").upper().strip()
@@ -925,7 +954,6 @@ def admin():
     with t3:
         dest = st.selectbox("DESTINO / 목적지", ["materiales", "holders"])
         
-        # Mostrar formato según destino seleccionado
         if dest == "holders":
             st.markdown("""
             <div style="background-color: #1a1a1a; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
@@ -966,7 +994,6 @@ def admin():
                         st.info(f"📊 Columnas detectadas: {', '.join(df_in.columns.tolist())}")
                         
                         if dest == "holders":
-                            # Buscar columnas: NUMERO, QTY, RACK
                             col_numero = None
                             col_qty = None
                             col_rack = None
@@ -992,7 +1019,6 @@ def admin():
                                     if not numero:
                                         continue
                                     
-                                    # Leer cantidad (QTY)
                                     cantidad = 0
                                     if col_qty:
                                         try:
@@ -1002,7 +1028,6 @@ def admin():
                                         except:
                                             cantidad = 0
                                     
-                                    # Leer ubicación (RACK)
                                     ubicacion = "SIN UBICACION"
                                     if col_rack:
                                         ubicacion = str(f.get(col_rack, 'SIN UBICACION')).strip().upper()
@@ -1034,7 +1059,6 @@ def admin():
                                 st.balloons()
                         
                         else:
-                            # MATERIALES - carga normal con todas las columnas
                             col_nombre = None
                             col_id = None
                             col_cantidad = None
