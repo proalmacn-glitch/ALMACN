@@ -442,23 +442,12 @@ def buscar():
         if cam_qr:
             with st.spinner("📷 Escaneando QR... / QR 스캔 중..."):
                 time.sleep(0.3)
-                res = decodificar_qr(cam_qr)
-                if res:
-                    st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    
-                    with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
-                        time.sleep(0.5)
-                        inventario_total = obtener_inventario()
-                        item_encontrado = buscar_coincidencia_por_qr(res, inventario_total)
-                        
-                        if item_encontrado:
-                            st.info(f"📦 Material/Holder encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
-                            texto_busqueda = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
-                            st.session_state["busqueda_input_buscar"] = texto_busqueda
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ No se encontraron coincidencias / 일치 항목 없음")
-                            st.info(f"Texto del QR: {res}")
+                texto_qr = decodificar_qr(cam_qr)
+                if texto_qr:
+                    st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
+                    # PONER EL TEXTO DEL QR DIRECTAMENTE EN LA BARRA DE BÚSQUEDA
+                    st.session_state["busqueda_input_buscar"] = texto_qr
+                    st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
     
@@ -704,22 +693,9 @@ def formulario():
                 res = decodificar_qr(cam)
                 if res:
                     st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    
-                    with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
-                        time.sleep(0.5)
-                        inventario_total = obtener_inventario()
-                        item_encontrado = buscar_coincidencia_por_qr(res, inventario_total)
-                        
-                        if item_encontrado:
-                            st.info(f"📦 Material/Holder encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
-                            
-                            texto_busqueda = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
-                            if st.session_state.get("busqueda_input", "") != texto_busqueda:
-                                st.session_state["busqueda_input"] = texto_busqueda
-                                st.rerun()
-                        else:
-                            st.warning("⚠️ No se encontraron coincidencias / 일치 항목 없음")
-                            st.info(f"Texto del QR: {res}")
+                    # PONER EL TEXTO DEL QR DIRECTAMENTE EN LA BARRA DE BÚSQUEDA DEL FORMULARIO
+                    st.session_state["busqueda_input"] = res
+                    st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
             
