@@ -299,19 +299,6 @@ st.markdown("""
     
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
     
-    @keyframes rayo {
-        0% { opacity: 0; transform: scale(0.3) rotate(0deg); }
-        30% { opacity: 1; transform: scale(1.3) rotate(10deg); }
-        60% { opacity: 1; transform: scale(1.1) rotate(-5deg); }
-        100% { opacity: 0; transform: scale(0.5) rotate(0deg); }
-    }
-    .rayo-animation {
-        animation: rayo 0.6s ease-out;
-        display: inline-block;
-        font-size: 60px;
-        text-shadow: 0 0 10px yellow;
-    }
-    
     .image-container {
         position: relative;
         width: 400px;
@@ -458,7 +445,6 @@ def buscar():
                 res = decodificar_qr(cam_qr)
                 if res:
                     st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                     
                     with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
                         time.sleep(0.5)
@@ -578,7 +564,6 @@ def buscar():
                             time.sleep(0.5)
                             if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
                                 st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()}")
-                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                                 time.sleep(0.8)
                                 st.rerun()
                     elif not nueva_ubicacion:
@@ -597,7 +582,6 @@ def buscar():
                             time.sleep(0.5)
                             if actualizar_stock_directo(id_f, col_f, nuevo_stock_valor):
                                 st.success(f"✅ Stock actualizado: {stock_total} → {nuevo_stock_valor}")
-                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
@@ -625,7 +609,6 @@ def buscar():
                         with st.spinner("Guardando configuración de imagen... / 이미지 설정 저장 중..."):
                             if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, nuevo_tamanio):
                                 st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={nuevo_tamanio}%")
-                                st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
@@ -721,7 +704,6 @@ def formulario():
                 res = decodificar_qr(cam)
                 if res:
                     st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    st.markdown('<div class="rayo-animation">⚡</div>', unsafe_allow_html=True)
                     
                     with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스에서 검색 중..."):
                         time.sleep(0.5)
@@ -784,7 +766,6 @@ def formulario():
                 if coincidencias:
                     if len(coincidencias) == 1:
                         cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
-                        # OBTENER LA UBICACIÓN REAL DEL ITEM (no "SALIDA")
                         ubicacion_item = obtener_ubicacion_item(cod_final, cat)
                         st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
                     else:
@@ -831,7 +812,6 @@ def formulario():
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
         
-        # Usar la ubicación real del item en lugar de "SALIDA"
         ubi = ubicacion_item if ubicacion_item else "SIN UBICACION"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else:
@@ -857,7 +837,6 @@ def formulario():
                     url_foto_final = blob.public_url
 
             with st.spinner("💾 Guardando registro... / 등록 저장 중..."):
-                # Al crear nuevo material/holder, guardar posición y tamaño por defecto
                 db.collection(cat).add({
                     "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
