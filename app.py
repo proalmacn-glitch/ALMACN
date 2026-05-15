@@ -10,8 +10,9 @@ import urllib.parse
 import io
 import unicodedata 
 import time
+import cv2
+import numpy as np
 from PIL import Image
-from pyzbar.pyzbar import decode
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -257,23 +258,25 @@ def obtener_ubicacion_item(item_id, categoria):
     except Exception as e:
         return "SIN UBICACION"
 
-# --- MOTOR DE ESCANEO DE QR (con pyzbar) ---
+# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, ESTABLE) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
-        img = Image.open(foto)
+        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
         
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
+        # Detector QR nativo de OpenCV
+        detector = cv2.QRCodeDetector()
+        data, bbox, _ = detector.detectAndDecode(img)
+        if data:
+            return str(data).upper()
         
-        codigos = decode(img)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
-        
-        img_gray = img.convert('L')
-        codigos = decode(img_gray)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
+        # Mejorar contraste con umbralización Otsu
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        data2, _, _ = detector.detectAndDecode(thresh)
+        if data2:
+            return str(data2).upper()
             
     except Exception as e:
         return None
