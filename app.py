@@ -10,9 +10,8 @@ import urllib.parse
 import io
 import unicodedata 
 import time
-import cv2
-import numpy as np
 from PIL import Image
+from pyzbar.pyzbar import decode
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -41,7 +40,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 # --- OPTIMIZACIÓN: CACHÉ DE INVENTARIO ---
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=60, show_spinner=False)
 def obtener_inventario():
     datos = []
     try:
@@ -210,7 +209,7 @@ def actualizar_ubicacion(item_id, categoria, nueva_ubicacion):
             db.collection(categoria).document(doc.id).update({"ubicacion": nueva_ubicacion.upper()})
             count += 1
         if count > 0:
-            obtener_inventario.clear()
+            st.cache_data.clear()
         return count > 0
     except Exception as e:
         st.error(f"Error al actualizar ubicación: {e}")
@@ -224,7 +223,7 @@ def actualizar_stock_directo(item_id, categoria, nuevo_stock):
             db.collection(categoria).document(doc.id).update({"cantidad": nuevo_stock})
             count += 1
         if count > 0:
-            obtener_inventario.clear()
+            st.cache_data.clear()
         return count > 0
     except Exception as e:
         st.error(f"Error al actualizar stock: {e}")
@@ -242,7 +241,7 @@ def actualizar_posicion_y_tamanio(item_id, categoria, pos_x, pos_y, tamanio):
             })
             count += 1
         if count > 0:
-            obtener_inventario.clear()
+            st.cache_data.clear()
         return count > 0
     except Exception as e:
         st.error(f"Error al actualizar posición/tamaño: {e}")
@@ -258,25 +257,23 @@ def obtener_ubicacion_item(item_id, categoria):
     except Exception as e:
         return "SIN UBICACION"
 
-# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, SIN PYZBAR) ---
+# --- MOTOR DE ESCANEO DE QR (con pyzbar) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
-        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
+        img = Image.open(foto)
         
-        # Detector QR nativo de OpenCV
-        detector = cv2.QRCodeDetector()
-        data, bbox, _ = detector.detectAndDecode(img)
-        if data:
-            return str(data).upper()
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
         
-        # Mejorar contraste con umbralización Otsu
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        data2, _, _ = detector.detectAndDecode(thresh)
-        if data2:
-            return str(data2).upper()
+        codigos = decode(img)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
+        
+        img_gray = img.convert('L')
+        codigos = decode(img_gray)
+        if codigos:
+            return codigos[0].data.decode("utf-8").upper()
             
     except Exception as e:
         return None
@@ -330,21 +327,27 @@ def login():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("ENTRAR / 입장"):
-            doc = db.collection("USUARIOS").document(u_in).get()
-            if doc.exists and str(doc.to_dict().get('clave')) == p_in:
-                st.session_state.user = u_in
-                if doc.to_dict().get('estado') == "NUEVO":
-                    st.session_state.page = 'cambiar_datos'
+            try:
+                doc = db.collection("USUARIOS").document(u_in).get()
+                if doc.exists and str(doc.to_dict().get('clave')) == p_in:
+                    st.session_state.user = u_in
+                    if doc.to_dict().get('estado') == "NUEVO":
+                        st.session_state.page = 'cambiar_datos'
+                    else:
+                        st.session_state.page = 'menu'
+                    st.rerun()
                 else:
-                    st.session_state.page = 'menu'
-                st.rerun()
-            else:
-                st.error("Error de credenciales / 자격 증명 오류")
+                    st.error("Error de credenciales / 자격 증명 오류")
+            except Exception as e:
+                st.error(f"Error de conexión: {e}")
     with col2:
         if st.button("REGISTRARSE / 등록"):
             u, p = f"USER{random.randint(10,99)}", f"{random.randint(100,999)}"
-            db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
-            st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+            try:
+                db.collection("USUARIOS").document(u).set({"clave": p, "estado": "NUEVO"})
+                st.success(f"User temporal / 임시 사용자: {u} | Pass / 비밀번호: {p}")
+            except Exception as e:
+                st.error(f"Error al registrar: {e}")
             
     st.divider()
     
@@ -382,22 +385,29 @@ def cambiar_datos():
         if st.button("GUARDAR Y ENTRAR / 저장 및 입장"):
             if nuevo_u and nueva_p:
                 if nuevo_u != st.session_state.user:
-                    doc_check = db.collection("USUARIOS").document(nuevo_u).get()
-                    if doc_check.exists:
-                        st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
+                    try:
+                        doc_check = db.collection("USUARIOS").document(nuevo_u).get()
+                        if doc_check.exists:
+                            st.error("⚠️ El usuario ya existe. Elige otro. / 사용자 이름이 이미 존재합니다. 다른 이름을 선택하세요.")
+                            return
+                    except Exception as e:
+                        st.error(f"Error: {e}")
                         return
                 
-                db.collection("USUARIOS").document(nuevo_u).set({
-                    "clave": nueva_p, 
-                    "estado": "ACTIVO"
-                })
-                if nuevo_u != st.session_state.user:
-                    db.collection("USUARIOS").document(st.session_state.user).delete()
-                    
-                st.session_state.user = nuevo_u
-                st.session_state.page = 'menu'
-                st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
-                st.rerun()
+                try:
+                    db.collection("USUARIOS").document(nuevo_u).set({
+                        "clave": nueva_p, 
+                        "estado": "ACTIVO"
+                    })
+                    if nuevo_u != st.session_state.user:
+                        db.collection("USUARIOS").document(st.session_state.user).delete()
+                        
+                    st.session_state.user = nuevo_u
+                    st.session_state.page = 'menu'
+                    st.success("✅ Datos actualizados! / 데이터 업데이트 완료!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar: {e}")
             else:
                 st.error("⚠️ Completa ambos campos. / 두 필드를 모두 입력하세요.")
 
@@ -657,7 +667,7 @@ def buscar():
                             docs_update = db.collection(col_f).where("item", "==", id_f).stream()
                             for doc in docs_update:
                                 db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
-                            obtener_inventario.clear()
+                            st.cache_data.clear()
                             st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
                             st.rerun()
                     else:
@@ -814,7 +824,7 @@ def formulario():
                     "pos_y": 50,
                     "tamanio": 100
                 })
-                obtener_inventario.clear() 
+                st.cache_data.clear()
                 st.session_state.pop('busqueda_input', None)
                 st.success("✅ REGISTRADO CON ÉXITO")
                 st.balloons()
@@ -862,7 +872,7 @@ def admin():
                             barra_borrado.progress(porcentaje_borrado, text=f"⏳ Borrando {i+1} de {total_borrar} registros... ({int(porcentaje_borrado * 100)}%)")
                             
                         barra_borrado.empty()
-                        obtener_inventario.clear() 
+                        st.cache_data.clear()
                         st.success(f"✅ BORRADO COMPLETADO: {total_borrar} registros eliminados. / 삭제 완료: {total_borrar}개 레코드 삭제됨.")
                         st.rerun()
                 
@@ -996,7 +1006,7 @@ def admin():
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
                                 
                                 barra_progreso.empty()
-                                obtener_inventario.clear() 
+                                st.cache_data.clear()
                                 st.success(f"✅ CARGA COMPLETADA: {registros_cargados} holders registrados / {registros_cargados}개 홀더 등록됨")
                                 if col_qty:
                                     st.info(f"📊 Cantidad (QTY) leída desde columna: {col_qty}")
@@ -1060,7 +1070,7 @@ def admin():
                                     barra_progreso.progress((i + 1) / total_filas, text=f"⏳ Procesando {i+1} de {total_filas}... Cargados: {registros_cargados}")
                                 
                                 barra_progreso.empty()
-                                obtener_inventario.clear() 
+                                st.cache_data.clear()
                                 st.success(f"✅ CARGA COMPLETADA: {registros_cargados} materiales registrados / {registros_cargados}개 자재 등록됨")
                                 st.balloons()
                                 
