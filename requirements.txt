@@ -1,9 +1,9 @@
 streamlit
 firebase-admin
 pandas
-opencv-python
 numpy
 pillow
+opencv-python-headless
 openpyxl
 xlsxwriter
 pytesseract
