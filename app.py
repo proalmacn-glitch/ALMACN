@@ -10,8 +10,9 @@ import urllib.parse
 import io
 import unicodedata 
 import time
+import cv2
+import numpy as np
 from PIL import Image
-from pyzbar.pyzbar import decode
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer, Paragraph
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -257,23 +258,25 @@ def obtener_ubicacion_item(item_id, categoria):
     except Exception as e:
         return "SIN UBICACION"
 
-# --- MOTOR DE ESCANEO DE QR ---
+# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, SIN PYZBAR) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
-        img = Image.open(foto)
+        file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
         
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
+        # Detector QR nativo de OpenCV
+        detector = cv2.QRCodeDetector()
+        data, bbox, _ = detector.detectAndDecode(img)
+        if data:
+            return str(data).upper()
         
-        codigos = decode(img)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
-        
-        img_gray = img.convert('L')
-        codigos = decode(img_gray)
-        if codigos:
-            return codigos[0].data.decode("utf-8").upper()
+        # Mejorar contraste con umbralización Otsu
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        data2, _, _ = detector.detectAndDecode(thresh)
+        if data2:
+            return str(data2).upper()
             
     except Exception as e:
         return None
@@ -362,7 +365,6 @@ def login():
         st.session_state.page = 'buscar'
         st.rerun()
     
-    # GIF ANIMADO - SIEMPRE APARECE PARA TODOS
     st.markdown('<div class="center-container">', unsafe_allow_html=True)
     st.image("https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNWVzMWpmNWtnZjhhaG1xazd2YmlyeGJha295ZzduNDA3M3hxcXhpZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/5Lk5l5T3HSCS1luPVk/giphy.gif")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -445,7 +447,6 @@ def buscar():
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
-                    # PONER EL TEXTO DEL QR DIRECTAMENTE EN LA BARRA DE BÚSQUEDA
                     st.session_state["busqueda_input_buscar"] = texto_qr
                     st.rerun()
                 else:
@@ -531,7 +532,6 @@ def buscar():
     if item_seleccionado:
         st.markdown(f"<h2 style='text-align:center;'>{nombre_item}</h2>", unsafe_allow_html=True)
         
-        # Mostrar métricas actuales
         col1, col2 = st.columns(2)
         col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
         col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
@@ -541,7 +541,6 @@ def buscar():
             st.markdown("---")
             st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO) / 빠른 관리 (YAKO만 가능)</h4>", unsafe_allow_html=True)
             
-            # Fila 1: Cambiar ubicación
             col_ubi1, col_ubi2, col_ubi3 = st.columns([0.5, 0.25, 0.25])
             with col_ubi1:
                 nueva_ubicacion = st.text_input("📍 NUEVA UBICACIÓN / 새 위치", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
@@ -558,7 +557,6 @@ def buscar():
                     elif not nueva_ubicacion:
                         st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
             
-            # Fila 2: Cambiar stock directamente
             st.markdown("<br>", unsafe_allow_html=True)
             col_stock1, col_stock2, col_stock3 = st.columns([0.5, 0.25, 0.25])
             with col_stock1:
@@ -576,7 +574,6 @@ def buscar():
                     else:
                         st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
             
-            # Fila 3: Posicionar imagen con coordenadas X, Y y TAMAÑO
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown("<h5 style='color: #00FF00;'>🖼️ AJUSTAR IMAGEN / 이미지 조정</h5>", unsafe_allow_html=True)
             
@@ -603,18 +600,14 @@ def buscar():
                     else:
                         st.info("La configuración no ha cambiado / 설정이 변경되지 않았습니다.")
         
-        # Alerta de stock bajo
         if stock_total <= 5 and stock_total > 0:
             st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
         elif stock_total <= 0:
             st.error(f"❌ STOCK AGOTADO: {stock_total} unidades / 재고 없음: {stock_total}개")
         
         st.divider()
-        
-        # --- CONTENEDOR CON POSICIONAMIENTO DE IMAGEN ---
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
-        # Generar QR (lado izquierdo)
         nombre_id_qr = f"{nombre_item}/{id_f}"
         nombre_codificado = urllib.parse.quote(nombre_id_qr)
         qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
@@ -625,7 +618,6 @@ def buscar():
             </div>
         ''', unsafe_allow_html=True)
         
-        # ---- IMAGEN CON POSICIONAMIENTO POR COORDENADAS Y TAMAÑO ----
         if foto_url:
             ancho_max = int(280 * (tamanio_img / 100))
             alto_max = int(240 * (tamanio_img / 100))
@@ -693,7 +685,6 @@ def formulario():
                 res = decodificar_qr(cam)
                 if res:
                     st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    # PONER EL TEXTO DEL QR DIRECTAMENTE EN LA BARRA DE BÚSQUEDA DEL FORMULARIO
                     st.session_state["busqueda_input"] = res
                     st.rerun()
                 else:
