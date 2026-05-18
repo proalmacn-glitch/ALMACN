@@ -439,7 +439,7 @@ def menu():
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
     
-    # --- LECTOR QR PARA BUSCAR (CON AUTO-BÚSQUEDA) ---
+    # --- LECTOR QR PARA BUSCAR ---
     with st.expander("📷 ESCANEAR QR PARA BUSCAR / 검색용 QR 스캔"):
         cam_qr = st.camera_input("SCAN QR / QR 스캔", key="qr_cam_buscar")
         if cam_qr:
@@ -448,20 +448,13 @@ def buscar():
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
-                    # Actualizar el valor de búsqueda sin rerun
+                    # Guardar directamente en el campo de búsqueda
                     st.session_state["busqueda_input_buscar"] = texto_qr
-                    # Marcar para buscar automáticamente
-                    st.session_state["qr_scaneado"] = True
+                    st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
     
-    # Obtener el valor de búsqueda
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
-    
-    # Si hay QR scaneado y hay texto, buscar automáticamente
-    if st.session_state.get("qr_scaneado", False) and busqueda:
-        st.session_state["qr_scaneado"] = False
-        # Forzar la búsqueda continuando con el código
     
     item_seleccionado = None
     stock_total = 0
@@ -479,7 +472,7 @@ def buscar():
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
-            # Buscar coincidencias exactas o parciales
+            # Buscar coincidencias exactas
             coincidencias = []
             for item in inventario_total:
                 nombre = str(item.get('nombre', '')).upper()
@@ -494,7 +487,6 @@ def buscar():
                 if len(coincidencias) > 1:
                     st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
                     
-                # Si hay múltiples coincidencias, mostrar selectbox
                 if len(coincidencias) > 1:
                     opciones = list(set([c['label'] for c in coincidencias])) 
                     seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
@@ -514,15 +506,12 @@ def buscar():
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
-                # Calcular stock total
                 stock_total = 0
                 for item in inventario_total:
                     if item.get('item') == id_f and item.get('cat_db') == col_f:
                         stock_total += item.get('cantidad', 0)
                 
                 foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
-                
-                # Éxito en la búsqueda
                 st.balloons()
             else:
                 st.warning(f"No se encontraron resultados para: {busqueda} / 결과 없음")
