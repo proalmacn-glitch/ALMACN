@@ -468,7 +468,7 @@ def buscar():
                     # Extraer solo el ID del QR (ej: "PERRO/123" -> "123")
                     id_extraido = extraer_id_del_qr(texto_qr)
                     st.success(f"✅ QR detectado: {texto_qr} / ID extraído: {id_extraido}")
-                    # Guardar en session state y marcar que debe buscar
+                    # Guardar el ID en session state para la búsqueda
                     st.session_state["busqueda_auto"] = id_extraido
                     st.rerun()
                 else:
@@ -477,13 +477,10 @@ def buscar():
     # Verificar si hay búsqueda automática pendiente
     if "busqueda_auto" in st.session_state and st.session_state["busqueda_auto"]:
         busqueda = st.session_state["busqueda_auto"]
-        # Limpiar para no repetir
+        # Limpiar para no repetir en el próximo rerun
         st.session_state["busqueda_auto"] = ""
     else:
         busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
-        # Si el usuario escribe manualmente, actualizar el session state
-        if busqueda:
-            st.session_state["busqueda_auto"] = busqueda
     
     item_seleccionado = None
     stock_total = 0
