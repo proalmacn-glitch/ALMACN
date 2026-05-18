@@ -23,7 +23,7 @@ from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode import qr
 
 # --- CONFIGURACIÓN DE PÁGINA / 페이지 설정 ---
-st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="centered")
+st.set_page_config(page_title="YAKO PRO WEB", page_icon="📦", layout="wide")
 
 # --- CONEXIÓN FIREBASE / 파이어베이스 연결 ---
 if not firebase_admin._apps:
@@ -258,20 +258,18 @@ def obtener_ubicacion_item(item_id, categoria):
     except Exception as e:
         return "SIN UBICACION"
 
-# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV, ESTABLE) ---
+# --- MOTOR DE ESCANEO DE QR (SOLO OPENCV) ---
 def decodificar_qr(foto):
     try:
         foto.seek(0)
         file_bytes = np.asarray(bytearray(foto.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         
-        # Detector QR nativo de OpenCV
         detector = cv2.QRCodeDetector()
         data, bbox, _ = detector.detectAndDecode(img)
         if data:
             return str(data).upper()
         
-        # Mejorar contraste con umbralización Otsu
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         data2, _, _ = detector.detectAndDecode(thresh)
@@ -301,17 +299,6 @@ st.markdown("""
     .center-container { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; text-align: center; }
     
     .user-card { border: 1px solid #444; padding: 15px; border-radius: 10px; margin-bottom: 10px; background-color: #0e0e0e; }
-    
-    .image-container {
-        position: relative;
-        width: 400px;
-        height: 300px;
-        margin: 0 auto;
-    }
-    .positioned-image {
-        position: absolute;
-        transform: translate(-50%, -50%);
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -448,10 +435,11 @@ def menu():
             st.session_state.page = 'login'
             st.rerun()
 
+# ================= FUNCIÓN BUSCAR CORREGIDA =================
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
     
-    # --- LECTOR QR PARA BUSCAR ---
+    # --- LECTOR QR PARA BUSCAR (CON AUTO-BÚSQUEDA) ---
     with st.expander("📷 ESCANEAR QR PARA BUSCAR / 검색용 QR 스캔"):
         cam_qr = st.camera_input("SCAN QR / QR 스캔", key="qr_cam_buscar")
         if cam_qr:
@@ -460,12 +448,22 @@ def buscar():
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
+                    # Guardar el texto y marcar que debe buscar automáticamente
                     st.session_state["busqueda_input_buscar"] = texto_qr
+                    st.session_state["auto_buscar"] = True
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
     
+    # Variable para controlar si se debe buscar automáticamente
+    auto_buscar = st.session_state.get("auto_buscar", False)
+    
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+    
+    # Si hay auto_buscar activado, ejecutar la búsqueda inmediatamente
+    if auto_buscar and busqueda:
+        st.session_state["auto_buscar"] = False
+        # No hacemos rerun, dejamos que el código continúe y muestre resultados
     
     item_seleccionado = None
     stock_total = 0
@@ -483,15 +481,28 @@ def buscar():
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
-            coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
+            # Buscar coincidencias exactas o parciales
+            coincidencias = []
+            for item in inventario_total:
+                nombre = str(item.get('nombre', '')).upper()
+                item_id = str(item.get('item', '')).upper()
+                if busqueda == nombre or busqueda == item_id:
+                    coincidencias = [item]
+                    break
+                elif busqueda in nombre or busqueda in item_id:
+                    coincidencias.append(item)
             
             if coincidencias:
                 if len(coincidencias) > 1:
                     st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
                     
-                opciones = list(set([c['label'] for c in coincidencias])) 
-                seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
-                item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
+                # Si hay múltiples coincidencias, mostrar selectbox
+                if len(coincidencias) > 1:
+                    opciones = list(set([c['label'] for c in coincidencias])) 
+                    seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
+                    item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
+                else:
+                    item_seleccionado = coincidencias[0]
                 
                 id_f = item_seleccionado.get('item')
                 col_f = item_seleccionado['cat_db']
@@ -505,14 +516,18 @@ def buscar():
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
+                # Calcular stock total
                 stock_total = 0
                 for item in inventario_total:
                     if item.get('item') == id_f and item.get('cat_db') == col_f:
                         stock_total += item.get('cantidad', 0)
                 
                 foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
+                
+                # Éxito en la búsqueda
+                st.balloons()
             else:
-                st.warning("No se encontraron resultados / 결과 없음")
+                st.warning(f"No se encontraron resultados para: {busqueda} / 결과 없음")
     
     # --- MAPA DE RACKS SOLO PARA HOLDERS ---
     if item_seleccionado and col_f == "holders":
@@ -549,7 +564,6 @@ def buscar():
         col1.metric("STOCK ACTUAL / 재고", max(0, stock_total))
         col2.metric("UBICACIÓN / 위치", ubicacion_raw if ubicacion_raw else "---")
         
-        # === SOLO YAKO: MODIFICAR UBICACIÓN, STOCK Y POSICIÓN ===
         if st.session_state.user == "YAKO":
             st.markdown("---")
             st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO) / 빠른 관리 (YAKO만 가능)</h4>", unsafe_allow_html=True)
@@ -565,6 +579,7 @@ def buscar():
                             time.sleep(0.5)
                             if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
                                 st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()}")
+                                st.balloons()
                                 time.sleep(0.8)
                                 st.rerun()
                     elif not nueva_ubicacion:
@@ -582,6 +597,7 @@ def buscar():
                             time.sleep(0.5)
                             if actualizar_stock_directo(id_f, col_f, nuevo_stock_valor):
                                 st.success(f"✅ Stock actualizado: {stock_total} → {nuevo_stock_valor}")
+                                st.balloons()
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
@@ -608,6 +624,7 @@ def buscar():
                         with st.spinner("Guardando configuración de imagen... / 이미지 설정 저장 중..."):
                             if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, nuevo_tamanio):
                                 st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={nuevo_tamanio}%")
+                                st.balloons()
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
@@ -702,7 +719,7 @@ def formulario():
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
-            
+    
     busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
     
     cod_final = ""
