@@ -448,22 +448,20 @@ def buscar():
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
-                    # Guardar el texto y marcar que debe buscar automáticamente
+                    # Actualizar el valor de búsqueda sin rerun
                     st.session_state["busqueda_input_buscar"] = texto_qr
-                    st.session_state["auto_buscar"] = True
-                    st.rerun()
+                    # Marcar para buscar automáticamente
+                    st.session_state["qr_scaneado"] = True
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
     
-    # Variable para controlar si se debe buscar automáticamente
-    auto_buscar = st.session_state.get("auto_buscar", False)
-    
+    # Obtener el valor de búsqueda
     busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
-    # Si hay auto_buscar activado, ejecutar la búsqueda inmediatamente
-    if auto_buscar and busqueda:
-        st.session_state["auto_buscar"] = False
-        # No hacemos rerun, dejamos que el código continúe y muestre resultados
+    # Si hay QR scaneado y hay texto, buscar automáticamente
+    if st.session_state.get("qr_scaneado", False) and busqueda:
+        st.session_state["qr_scaneado"] = False
+        # Forzar la búsqueda continuando con el código
     
     item_seleccionado = None
     stock_total = 0
