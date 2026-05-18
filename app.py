@@ -74,20 +74,16 @@ def obtener_url_final(url):
 
 # --- FUNCIÓN PARA EXTRAER ID DEL QR (ej: "PERRO/123" -> "123") ---
 def extraer_id_del_qr(texto_qr):
-    """Extrae el ID de un texto de QR que puede tener formato nombre/ID o nombre|ID"""
     if not texto_qr:
         return None
     
-    # Buscar después de / o | o - o _
     separadores = ['/', '|', '-', '_', ' ']
     for sep in separadores:
         if sep in texto_qr:
-            # Tomar la parte después del separador
             id_encontrado = texto_qr.split(sep)[-1].strip()
             if id_encontrado:
                 return id_encontrado.upper()
     
-    # Si no hay separador, devolver todo el texto
     return texto_qr.upper()
 
 # --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
@@ -99,32 +95,6 @@ def normalizar_texto(texto):
         texto = texto.replace(simbolo, ' ')
     texto = ' '.join(texto.split())
     return texto
-
-def buscar_coincidencia_por_qr(texto_qr, inventario_total):
-    if not texto_qr:
-        return None
-    
-    texto_normalizado_qr = normalizar_texto(texto_qr)
-    
-    for item in inventario_total:
-        nombre = str(item.get('nombre', '')).upper()
-        item_id = str(item.get('item', '')).upper()
-        
-        if texto_qr == nombre or texto_qr == item_id:
-            return item
-        
-        nombre_normalizado = normalizar_texto(nombre)
-        id_normalizado = normalizar_texto(item_id)
-        
-        if texto_normalizado_qr == nombre_normalizado or texto_normalizado_qr == id_normalizado:
-            return item
-        
-        if texto_qr in item_id or item_id in texto_qr:
-            return item
-        if texto_qr in nombre or nombre in texto_qr:
-            return item
-    
-    return None
 
 def ir(acc, cat):
     st.session_state.accion = acc
@@ -275,6 +245,18 @@ def obtener_ubicacion_item(item_id, categoria):
         return "SIN UBICACION"
     except Exception as e:
         return "SIN UBICACION"
+
+# --- OBTENER ITEM POR ID ---
+def obtener_item_por_id(item_id, categoria):
+    try:
+        docs = db.collection(categoria).where("item", "==", item_id).stream()
+        for doc in docs:
+            item = doc.to_dict()
+            item['doc_id'] = doc.id
+            return item
+        return None
+    except Exception as e:
+        return None
 
 # --- MOTOR DE ESCANEO DE QR (SOLO OPENCV) ---
 def decodificar_qr(foto):
@@ -453,7 +435,7 @@ def menu():
             st.session_state.page = 'login'
             st.rerun()
 
-# ================= FUNCIÓN BUSCAR CORREGIDA =================
+# ================= FUNCIÓN BUSCAR (CON QR AUTO-BÚSQUEDA) =================
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
     
@@ -465,20 +447,17 @@ def buscar():
                 time.sleep(0.3)
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
-                    # Extraer solo el ID del QR (ej: "PERRO/123" -> "123")
                     id_extraido = extraer_id_del_qr(texto_qr)
-                    st.success(f"✅ QR detectado: {texto_qr} / ID extraído: {id_extraido}")
-                    # Guardar el ID en session state para la búsqueda
-                    st.session_state["busqueda_auto"] = id_extraido
+                    st.success(f"✅ QR detectado: {texto_qr} / ID: {id_extraido}")
+                    st.session_state["buscar_valor"] = id_extraido
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro.")
     
-    # Verificar si hay búsqueda automática pendiente
-    if "busqueda_auto" in st.session_state and st.session_state["busqueda_auto"]:
-        busqueda = st.session_state["busqueda_auto"]
-        # Limpiar para no repetir en el próximo rerun
-        st.session_state["busqueda_auto"] = ""
+    # Obtener valor de búsqueda
+    if "buscar_valor" in st.session_state and st.session_state["buscar_valor"]:
+        busqueda = st.session_state["buscar_valor"]
+        st.session_state["buscar_valor"] = ""
     else:
         busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
     
@@ -498,7 +477,6 @@ def buscar():
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
-            # Buscar coincidencias exactas primero
             coincidencias = []
             for item in inventario_total:
                 nombre = str(item.get('nombre', '')).upper()
@@ -511,11 +489,11 @@ def buscar():
             
             if coincidencias:
                 if len(coincidencias) > 1:
-                    st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS. / {len(coincidencias)}개의 일치 항목이 있습니다.")
+                    st.info(f"⚠️ HAY {len(coincidencias)} COINCIDENCIAS.")
                     
                 if len(coincidencias) > 1:
                     opciones = list(set([c['label'] for c in coincidencias])) 
-                    seleccion = st.selectbox("RESULTADOS / 검색 결과:", opciones)
+                    seleccion = st.selectbox("RESULTADOS:", opciones)
                     item_seleccionado = next(c for c in coincidencias if c['label'] == seleccion)
                 else:
                     item_seleccionado = coincidencias[0]
@@ -532,7 +510,6 @@ def buscar():
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
-                # Calcular stock total
                 stock_total = 0
                 for item in inventario_total:
                     if item.get('item') == id_f and item.get('cat_db') == col_f:
@@ -541,7 +518,7 @@ def buscar():
                 foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
                 st.balloons()
             else:
-                st.warning(f"No se encontraron resultados para: {busqueda} / 결과 없음")
+                st.warning(f"No se encontraron resultados para: {busqueda}")
     
     # --- MAPA DE RACKS SOLO PARA HOLDERS ---
     if item_seleccionado and col_f == "holders":
@@ -580,16 +557,16 @@ def buscar():
         
         if st.session_state.user == "YAKO":
             st.markdown("---")
-            st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO) / 빠른 관리 (YAKO만 가능)</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align: center; color: #FFD700;'>🔧 ADMINISTRACIÓN RÁPIDA (SOLO YAKO)</h4>", unsafe_allow_html=True)
             
             col_ubi1, col_ubi2, col_ubi3 = st.columns([0.5, 0.25, 0.25])
             with col_ubi1:
-                nueva_ubicacion = st.text_input("📍 NUEVA UBICACIÓN / 새 위치", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
+                nueva_ubicacion = st.text_input("📍 NUEVA UBICACIÓN", value=ubicacion_raw if ubicacion_raw else "", key="nueva_ubicacion_input")
             with col_ubi2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🔄 ACTUALIZAR UBICACIÓN / 위치 업데이트", key="btn_actualizar_ubicacion"):
+                if st.button("🔄 ACTUALIZAR UBICACIÓN", key="btn_actualizar_ubicacion"):
                     if nueva_ubicacion and nueva_ubicacion != ubicacion_raw:
-                        with st.spinner("Actualizando ubicación... / 위치 업데이트 중..."):
+                        with st.spinner("Actualizando ubicación..."):
                             time.sleep(0.5)
                             if actualizar_ubicacion(id_f, col_f, nueva_ubicacion):
                                 st.success(f"✅ Ubicación actualizada: {ubicacion_raw} → {nueva_ubicacion.upper()}")
@@ -597,17 +574,17 @@ def buscar():
                                 time.sleep(0.8)
                                 st.rerun()
                     elif not nueva_ubicacion:
-                        st.warning("⚠️ Ingrese una nueva ubicación / 새 위치를 입력하세요.")
+                        st.warning("⚠️ Ingrese una nueva ubicación")
             
             st.markdown("<br>", unsafe_allow_html=True)
             col_stock1, col_stock2, col_stock3 = st.columns([0.5, 0.25, 0.25])
             with col_stock1:
-                nuevo_stock_valor = st.number_input("📦 NUEVO STOCK / 새 재고량", min_value=0, value=int(stock_total), key="nuevo_stock_input")
+                nuevo_stock_valor = st.number_input("📦 NUEVO STOCK", min_value=0, value=int(stock_total), key="nuevo_stock_input")
             with col_stock2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 ACTUALIZAR STOCK / 재고 업데이트", key="btn_actualizar_stock"):
+                if st.button("💾 ACTUALIZAR STOCK", key="btn_actualizar_stock"):
                     if nuevo_stock_valor != stock_total:
-                        with st.spinner("Actualizando stock... / 재고 업데이트 중..."):
+                        with st.spinner("Actualizando stock..."):
                             time.sleep(0.5)
                             if actualizar_stock_directo(id_f, col_f, nuevo_stock_valor):
                                 st.success(f"✅ Stock actualizado: {stock_total} → {nuevo_stock_valor}")
@@ -615,46 +592,43 @@ def buscar():
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
-                        st.info("El stock no ha cambiado / 재고가 변경되지 않았습니다.")
+                        st.info("El stock no ha cambiado")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("<h5 style='color: #00FF00;'>🖼️ AJUSTAR IMAGEN / 이미지 조정</h5>", unsafe_allow_html=True)
+            st.markdown("<h5 style='color: #00FF00;'>🖼️ AJUSTAR IMAGEN</h5>", unsafe_allow_html=True)
             
             col_x1, col_y1, col_size1 = st.columns(3)
             with col_x1:
                 nueva_pos_x = st.slider("📍 POSICIÓN X (%)", min_value=0, max_value=100, value=int(pos_x), key="pos_x_slider")
-                st.caption("0% = izquierda, 50% = centro, 100% = derecha")
             with col_y1:
                 nueva_pos_y = st.slider("📍 POSICIÓN Y (%)", min_value=0, max_value=100, value=int(pos_y), key="pos_y_slider")
-                st.caption("0% = arriba, 50% = centro, 100% = abajo")
             with col_size1:
                 nuevo_tamanio = st.slider("📏 TAMAÑO DE IMAGEN (%)", min_value=20, max_value=100, value=int(tamanio_img), key="tamanio_slider")
-                st.caption(f"{nuevo_tamanio}% del tamaño original")
             
             col_btn1, col_btn2, col_btn3 = st.columns([0.35, 0.3, 0.35])
             with col_btn2:
-                if st.button("🎯 GUARDAR CONFIGURACIÓN DE IMAGEN / 이미지 설정 저장", key="btn_guardar_posicion"):
+                if st.button("🎯 GUARDAR CONFIGURACIÓN", key="btn_guardar_posicion"):
                     if (nueva_pos_x != pos_x or nueva_pos_y != pos_y or nuevo_tamanio != tamanio_img):
-                        with st.spinner("Guardando configuración de imagen... / 이미지 설정 저장 중..."):
+                        with st.spinner("Guardando configuración..."):
                             if actualizar_posicion_y_tamanio(id_f, col_f, nueva_pos_x, nueva_pos_y, nuevo_tamanio):
                                 st.success(f"✅ Configuración guardada: X={nueva_pos_x}%, Y={nueva_pos_y}%, Tamaño={nuevo_tamanio}%")
                                 st.balloons()
                                 time.sleep(0.8)
                                 st.rerun()
                     else:
-                        st.info("La configuración no ha cambiado / 설정이 변경되지 않았습니다.")
+                        st.info("La configuración no ha cambiado")
         
         if stock_total <= 5 and stock_total > 0:
-            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades / 재고 부족: {stock_total}개 남음")
+            st.warning(f"⚠️ STOCK BAJO: Quedan {stock_total} unidades")
         elif stock_total <= 0:
-            st.error(f"❌ STOCK AGOTADO: {stock_total} unidades / 재고 없음: {stock_total}개")
+            st.error(f"❌ STOCK AGOTADO: {stock_total} unidades")
         
         st.divider()
         st.markdown('<div class="media-container">', unsafe_allow_html=True)
         
         nombre_id_qr = f"{nombre_item}/{id_f}"
         nombre_codificado = urllib.parse.quote(nombre_id_qr)
-        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}&bgcolor=000000&color=ffffff"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=150x150&data={nombre_codificado}"
         st.markdown(f'''
             <div class="qr-left">
                 <img src="{qr_url}" width="150">
@@ -669,18 +643,17 @@ def buscar():
             st.markdown(f'''
             <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a;">
                 <div style="position: absolute; left: {pos_x}%; top: {pos_y}%; transform: translate(-50%, -50%);">
-                    <img src="{foto_url}" style="max-width: {ancho_max}px; max-height: {alto_max}px; border-radius: 15px; border: 3px solid red; box-shadow: 0px 4px 15px rgba(255, 0, 0, 0.5);">
+                    <img src="{foto_url}" style="max-width: {ancho_max}px; max-height: {alto_max}px; border-radius: 15px; border: 3px solid red;">
                 </div>
                 <div style="position: absolute; bottom: 5px; right: 10px; font-size: 10px; color: #666;">
                     X:{pos_x}% Y:{pos_y}% | Tamaño: {tamanio_img}%
                 </div>
             </div>
             ''', unsafe_allow_html=True)
-            st.caption("🖱️ Las coordenadas X e Y definen la posición de la imagen dentro del recuadro gris. El tamaño es ajustable por YAKO.")
         else:
             st.markdown(f'''
             <div style="position: relative; width: 400px; height: 300px; margin: 0 auto; border: 1px dashed #444; border-radius: 10px; background-color: #0a0a0a; display: flex; align-items: center; justify-content: center;">
-                <span style="color: gray; text-align: center;">Sin foto / 사진 없음<br><span style="font-size: 12px;">Sube una imagen usando el enlace abajo</span></span>
+                <span style="color: gray; text-align: center;">Sin foto<br>Sube una imagen usando el enlace abajo</span>
             </div>
             ''', unsafe_allow_html=True)
         
@@ -691,21 +664,20 @@ def buscar():
             st.markdown("<h4 style='text-align: center; color: yellow;'>📸 AGREGAR / ACTUALIZAR FOTO (SOLO YAKO)</h4>", unsafe_allow_html=True)
             col_f1, col_f2 = st.columns([0.7, 0.3])
             with col_f1:
-                nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.) / 사진 링크", key=f"foto_input_{id_f}")
-                st.caption("Ejemplo: https://ejemplo.com/mi-foto.jpg")
+                nueva_foto_url = st.text_input("PEGA EL ENLACE AQUÍ (Drive, web, etc.)", key=f"foto_input_{id_f}")
             with col_f2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 GUARDAR FOTO / 사진 저장", key=f"btn_foto_{id_f}"):
+                if st.button("💾 GUARDAR FOTO", key=f"btn_foto_{id_f}"):
                     if nueva_foto_url:
-                        with st.spinner("Guardando en la base de datos... / 저장 중..."):
+                        with st.spinner("Guardando en la base de datos..."):
                             docs_update = db.collection(col_f).where("item", "==", id_f).stream()
                             for doc in docs_update:
                                 db.collection(col_f).document(doc.id).update({"foto_url": nueva_foto_url})
                             st.cache_data.clear()
-                            st.success("✅ FOTO ACTUALIZADA PARA TODOS / 사진 업데이트 완료")
+                            st.success("✅ FOTO ACTUALIZADA PARA TODOS")
                             st.rerun()
                     else:
-                        st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
+                        st.warning("⚠️ Pegue un enlace antes de guardar.")
     
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("VOLVER / 돌아가기"): 
@@ -716,25 +688,32 @@ def buscar():
             st.session_state.page = 'menu'
         st.rerun()
 
+# ================= FUNCIÓN FORMULARIO (CON QR AUTO-COMPLETADO) =================
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
     st.markdown(f"<h1>{cat.upper()} - {acc}</h1>", unsafe_allow_html=True)
     
-    # --- ESCANEO QR CON BÚSQUEDA INTELIGENTE ---
-    with st.expander("📷 CÁMARA QR / QR 카메라 - Escanea cualquier QR / 모든 QR 스캔"):
-        cam = st.camera_input("SCAN / 스캔", key="qr_cam_input")
+    # --- ESCANEO QR PARA AUTO-COMPLETAR BÚSQUEDA ---
+    with st.expander("📷 CÁMARA QR / QR 카메라 - Escanea cualquier QR"):
+        cam = st.camera_input("SCAN / 스캔", key="qr_cam_formulario")
         if cam:
-            with st.spinner("📷 Escaneando QR... / QR 스캔 중..."):
+            with st.spinner("📷 Escaneando QR..."):
                 time.sleep(0.3)
                 res = decodificar_qr(cam)
                 if res:
-                    st.success(f"✅ QR detectado: {res} / QR 감지됨")
-                    st.session_state["busqueda_input"] = res
+                    id_extraido = extraer_id_del_qr(res)
+                    st.success(f"✅ QR detectado: {res} / ID: {id_extraido}")
+                    st.session_state["form_busqueda_valor"] = id_extraido
                     st.rerun()
                 else:
-                    st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
+                    st.error("⚠️ No se detectó un QR claro.")
     
-    busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input").upper().strip()
+    # Obtener valor de búsqueda del formulario
+    if "form_busqueda_valor" in st.session_state and st.session_state["form_busqueda_valor"]:
+        busqueda_form = st.session_state["form_busqueda_valor"]
+        st.session_state["form_busqueda_valor"] = ""
+    else:
+        busqueda_form = st.text_input("BUSCAR ID O NOMBRE / 코드 또는 이름 검색", key="busqueda_input_form").upper().strip()
     
     cod_final = ""
     nombre_final = ""
@@ -742,72 +721,36 @@ def formulario():
     ubicacion_item = "SIN UBICACION"
     
     if busqueda_form:
-        with st.spinner("🔍 Buscando en inventario... / 재고 검색 중..."):
+        with st.spinner("🔍 Buscando en inventario..."):
             time.sleep(0.3)
             termino_busqueda = busqueda_form.split("/")[-1].strip() if "/" in busqueda_form else busqueda_form
-            inventario_total = obtener_inventario()
+            item_encontrado = obtener_item_por_id(termino_busqueda, cat)
             
-            coincidencias = []
-            coincidencia_exacta = None
-            
-            for item in inventario_total:
-                if item['cat_db'] == cat:
-                    nom = str(item.get('nombre', '')).upper()
-                    idx = str(item.get('item', '')).upper()
-                    
-                    if termino_busqueda == idx:
-                        coincidencia_exacta = item
-                        break 
-                    elif termino_busqueda in nom or termino_busqueda in idx:
-                        coincidencias.append(item)
-            
-            if coincidencia_exacta:
-                coincidencias_unicas = [coincidencia_exacta]
+            if item_encontrado:
+                cod_final = item_encontrado.get('item')
+                nombre_final = item_encontrado.get('nombre', '')
+                ubicacion_item = item_encontrado.get('ubicacion', 'SIN UBICACION')
+                st.success(f"✅ Seleccionado: {nombre_final} | {cod_final}")
             else:
-                coincidencias_unicas = []
-                vistos = set()
-                for c in coincidencias:
-                    if c['label'] not in vistos:
-                        vistos.add(c['label'])
-                        coincidencias_unicas.append(c)
-                        
-            coincidencias = coincidencias_unicas
-            
-            if acc == "SALIDA":
-                if coincidencias:
-                    if len(coincidencias) == 1:
-                        cod_final, nombre_final = coincidencias[0]['item'], coincidencias[0].get('nombre', '')
-                        ubicacion_item = obtener_ubicacion_item(cod_final, cat)
-                        st.success(f"✅ Seleccionado: {coincidencias[0]['label']}")
-                    else:
-                        opciones = [c['label'] for c in coincidencias]
-                        seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
-                        item_sel = next(c for c in coincidencias if c['label'] == seleccion)
-                        cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
-                        ubicacion_item = obtener_ubicacion_item(cod_final, cat)
-                else:
-                    st.error("⚠️ MATERIAL NO ENCONTRADO.")
-            else:  # ENTRADA
-                if coincidencias:
-                    if len(coincidencias) == 1 and coincidencia_exacta:
-                        opciones = [coincidencias[0]['label']] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
-                    else:
-                        opciones = [c['label'] for c in coincidencias] + ["➕ CREAR NUEVO MATERIAL / 새 자재 생성"]
-                        
-                    seleccion = st.selectbox("SELECCIONA O CREA NUEVO / 선택 또는 새로 만들기:", opciones)
-                    if seleccion == "➕ CREAR NUEVO MATERIAL / 새 자재 생성": 
-                        es_nuevo = True
-                    else:
-                        item_sel = next(c for c in coincidencias if c['label'] == seleccion)
-                        cod_final, nombre_final = item_sel['item'], item_sel.get('nombre', '')
+                # Buscar por nombre también
+                inventario_total = obtener_inventario()
+                encontrado = None
+                for item in inventario_total:
+                    if item['cat_db'] == cat and termino_busqueda in str(item.get('nombre', '')).upper():
+                        encontrado = item
+                        break
+                if encontrado:
+                    cod_final = encontrado.get('item')
+                    nombre_final = encontrado.get('nombre', '')
+                    ubicacion_item = encontrado.get('ubicacion', 'SIN UBICACION')
+                    st.success(f"✅ Seleccionado: {nombre_final} | {cod_final}")
                 else:
                     st.warning("⚠️ No encontrado. Se registrará como NUEVO MATERIAL.")
                     es_nuevo = True
-                
-                if es_nuevo:
                     nuevo_id = st.text_input("ID DEL MATERIAL / 자재 코드", value=termino_busqueda).upper().strip()
                     nuevo_nom = st.text_input("NOMBRE DEL MATERIAL / 자재 이름").upper().strip()
                     cod_final, nombre_final = nuevo_id, nuevo_nom
+                    ubicacion_item = st.text_input("UBICACIÓN / 위치").upper().strip() if not ubicacion_item else ubicacion_item
 
     cant = st.number_input("CANTIDAD / 수량", min_value=1, key="cant1")
     cant_conf = st.number_input("CONFIRMAR CANTIDAD / 수량 확인", min_value=0, key="cant2")
@@ -823,6 +766,7 @@ def formulario():
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
         
+        # Usar la ubicación real del item (no "SALIDA")
         ubi = ubicacion_item if ubicacion_item else "SIN UBICACION"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else:
@@ -839,7 +783,7 @@ def formulario():
             fecha_str = datetime.now().strftime("%Y-%m-%d %H:%M")
             
             if foto_evidencia:
-                with st.spinner("📤 Subiendo evidencia... / 증거 업로드 중..."):
+                with st.spinner("📤 Subiendo evidencia..."):
                     nombre_archivo = f"evidencias/EVIDENCIA_{nombre_final}_{linea_uso}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg".replace(" ", "_")
                     bucket = storage.bucket()
                     blob = bucket.blob(nombre_archivo)
@@ -847,7 +791,7 @@ def formulario():
                     blob.make_public()
                     url_foto_final = blob.public_url
 
-            with st.spinner("💾 Guardando registro... / 등록 저장 중..."):
+            with st.spinner("💾 Guardando registro..."):
                 db.collection(cat).add({
                     "fecha": fecha_str, "item": cod_final, "nombre": nombre_final,
                     "cantidad": cant if acc == "ENTRADA" else -cant, "ubicacion": ubi, 
@@ -859,14 +803,14 @@ def formulario():
                     "tamanio": 100
                 })
                 st.cache_data.clear()
-                st.session_state.pop('busqueda_input', None)
+                st.session_state.pop('form_busqueda_valor', None)
                 st.success("✅ REGISTRADO CON ÉXITO")
                 st.balloons()
                 time.sleep(1)
                 st.rerun() 
         
         if st.button("VOLVER / 돌아가기"): 
-            st.session_state.pop('busqueda_input', None)
+            st.session_state.pop('form_busqueda_valor', None)
             st.session_state.page = 'login' if st.session_state.user == "INVITADO" else 'menu'
             st.rerun()
 
