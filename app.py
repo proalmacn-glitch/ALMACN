@@ -72,6 +72,24 @@ def obtener_url_final(url):
         
     return url_limpia
 
+# --- FUNCIÓN PARA EXTRAER ID DEL QR (ej: "PERRO/123" -> "123") ---
+def extraer_id_del_qr(texto_qr):
+    """Extrae el ID de un texto de QR que puede tener formato nombre/ID o nombre|ID"""
+    if not texto_qr:
+        return None
+    
+    # Buscar después de / o | o - o _
+    separadores = ['/', '|', '-', '_', ' ']
+    for sep in separadores:
+        if sep in texto_qr:
+            # Tomar la parte después del separador
+            id_encontrado = texto_qr.split(sep)[-1].strip()
+            if id_encontrado:
+                return id_encontrado.upper()
+    
+    # Si no hay separador, devolver todo el texto
+    return texto_qr.upper()
+
 # --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
 def normalizar_texto(texto):
     if not texto:
@@ -447,9 +465,11 @@ def buscar():
                 time.sleep(0.3)
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
-                    st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
-                    # Guardar directamente en el campo de búsqueda
-                    st.session_state["busqueda_input_buscar"] = texto_qr
+                    # Extraer solo el ID del QR (ej: "PERRO/123" -> "123")
+                    id_extraido = extraer_id_del_qr(texto_qr)
+                    st.success(f"✅ QR detectado: {texto_qr} / ID extraído: {id_extraido} / QR 감지됨")
+                    # Guardar el ID extraído en la barra de búsqueda
+                    st.session_state["busqueda_input_buscar"] = id_extraido
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
@@ -472,7 +492,7 @@ def buscar():
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
-            # Buscar coincidencias exactas
+            # Buscar coincidencias exactas primero
             coincidencias = []
             for item in inventario_total:
                 nombre = str(item.get('nombre', '')).upper()
@@ -506,6 +526,7 @@ def buscar():
                     rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
                     rack_highlight = rack_match.group(1) if rack_match else None
                 
+                # Calcular stock total
                 stock_total = 0
                 for item in inventario_total:
                     if item.get('item') == id_f and item.get('cat_db') == col_f:
