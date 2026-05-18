@@ -467,14 +467,23 @@ def buscar():
                 if texto_qr:
                     # Extraer solo el ID del QR (ej: "PERRO/123" -> "123")
                     id_extraido = extraer_id_del_qr(texto_qr)
-                    st.success(f"✅ QR detectado: {texto_qr} / ID extraído: {id_extraido} / QR 감지됨")
-                    # Guardar el ID extraído en la barra de búsqueda
-                    st.session_state["busqueda_input_buscar"] = id_extraido
+                    st.success(f"✅ QR detectado: {texto_qr} / ID extraído: {id_extraido}")
+                    # Guardar en session state y marcar que debe buscar
+                    st.session_state["busqueda_auto"] = id_extraido
                     st.rerun()
                 else:
-                    st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
+                    st.error("⚠️ No se detectó un QR claro.")
     
-    busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+    # Verificar si hay búsqueda automática pendiente
+    if "busqueda_auto" in st.session_state and st.session_state["busqueda_auto"]:
+        busqueda = st.session_state["busqueda_auto"]
+        # Limpiar para no repetir
+        st.session_state["busqueda_auto"] = ""
+    else:
+        busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+        # Si el usuario escribe manualmente, actualizar el session state
+        if busqueda:
+            st.session_state["busqueda_auto"] = busqueda
     
     item_seleccionado = None
     stock_total = 0
