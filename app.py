@@ -72,7 +72,7 @@ def obtener_url_final(url):
         
     return url_limpia
 
-# --- FUNCIÓN PARA NORMALIZAR TEXTO Y BUSCAR COINCIDENCIAS ---
+# --- FUNCIÓN PARA NORMALIZAR TEXTO (solo para comparación) ---
 def normalizar_texto(texto):
     if not texto:
         return ""
@@ -82,28 +82,52 @@ def normalizar_texto(texto):
     texto = ' '.join(texto.split())
     return texto
 
+# --- FUNCIÓN MEJORADA PARA BUSCAR POR QR (SIN FALSAS COINCIDENCIAS) ---
 def buscar_coincidencia_por_qr(texto_qr, inventario_total):
-    if not texto_qr:
+    """
+    Busca coincidencias EXACTAS entre el texto del QR y los items en inventario.
+    Retorna el item SOLO si encuentra coincidencia exacta con nombre o ID.
+    """
+    if not texto_qr or not inventario_total:
         return None
     
-    texto_normalizado_qr = normalizar_texto(texto_qr)
+    texto_qr = str(texto_qr).upper().strip()
     
+    # PRIMERO: búsqueda de coincidencia EXACTA (sin normalizar)
     for item in inventario_total:
-        nombre = str(item.get('nombre', '')).upper()
-        item_id = str(item.get('item', '')).upper()
+        nombre = str(item.get('nombre', '')).upper().strip()
+        item_id = str(item.get('item', '')).upper().strip()
         
+        # Coincidencia exacta con nombre o ID
         if texto_qr == nombre or texto_qr == item_id:
             return item
+    
+    # SEGUNDO: intentar separar por /, |, - para buscar por partes
+    # Ej: "PERRO/P-45" se separa en ["PERRO", "P-45"]
+    separadores = ['/', '|', '-', '_', ' ']
+    for sep in separadores:
+        if sep in texto_qr:
+            partes = texto_qr.split(sep)
+            for item in inventario_total:
+                nombre = str(item.get('nombre', '')).upper().strip()
+                item_id = str(item.get('item', '')).upper().strip()
+                # Buscar si alguna parte coincide exactamente con nombre o ID
+                for parte in partes:
+                    parte = parte.strip()
+                    if parte and (parte == nombre or parte == item_id):
+                        return item
+            break
+    
+    # TERCERO: si el texto del QR contiene el ID exacto o el nombre exacto
+    for item in inventario_total:
+        nombre = str(item.get('nombre', '')).upper().strip()
+        item_id = str(item.get('item', '')).upper().strip()
         
-        nombre_normalizado = normalizar_texto(nombre)
-        id_normalizado = normalizar_texto(item_id)
-        
-        if texto_normalizado_qr == nombre_normalizado or texto_normalizado_qr == id_normalizado:
+        # Si el texto del QR contiene el ID completo
+        if item_id and item_id in texto_qr:
             return item
-        
-        if texto_qr in item_id or item_id in texto_qr:
-            return item
-        if texto_qr in nombre or nombre in texto_qr:
+        # Si el texto del QR contiene el nombre completo
+        if nombre and nombre in texto_qr:
             return item
     
     return None
@@ -467,16 +491,21 @@ def buscar():
         col_btn1, col_btn2, col_btn3 = st.columns([0.3, 0.4, 0.3])
         with col_btn2:
             if st.button("✅ VERIFICAR / 확인", key="btn_verificar_qr", use_container_width=True):
-                # BUSCAR EL QR EN LA BASE DE DATOS DIRECTAMENTE
                 with st.spinner("🔍 Buscando coincidencias... / 일치 항목 검색 중..."):
                     time.sleep(0.5)
                     inventario_total = obtener_inventario()
                     
-                    # Buscar coincidencia usando la función existente
                     item_encontrado = buscar_coincidencia_por_qr(st.session_state.qr_pendiente, inventario_total)
                     
+                    # Panel de depuración (solo visible para YAKO)
+                    if st.session_state.user == "YAKO":
+                        with st.expander("🔍 Información de depuración / 디버그 정보"):
+                            st.write(f"**Texto QR:** {st.session_state.qr_pendiente}")
+                            st.write(f"**Item encontrado:** {item_encontrado.get('nombre') if item_encontrado else 'NINGUNO'}")
+                            if not item_encontrado:
+                                st.warning("No se encontró coincidencia. Verifica que el QR tenga el mismo texto que el nombre o ID en la base de datos.")
+                    
                     if item_encontrado:
-                        # Guardar el resultado encontrado
                         st.session_state.resultado_busqueda = item_encontrado
                         st.session_state.busqueda_actual = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
                         st.session_state.qr_pendiente = ""
@@ -498,7 +527,7 @@ def buscar():
     # Actualizar variable de búsqueda si el usuario escribe manualmente
     if busqueda != st.session_state.busqueda_actual:
         st.session_state.busqueda_actual = busqueda
-        st.session_state.resultado_busqueda = None  # Limpiar resultado previo
+        st.session_state.resultado_busqueda = None
     
     item_seleccionado = None
     stock_total = 0
@@ -527,7 +556,6 @@ def buscar():
             rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
             rack_highlight = rack_match.group(1) if rack_match else None
         
-        # Calcular stock total
         inventario_total = obtener_inventario()
         stock_total = 0
         for item in inventario_total:
