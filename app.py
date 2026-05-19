@@ -443,6 +443,8 @@ def buscar():
         st.session_state.busqueda_actual = ""
     if 'qr_pendiente' not in st.session_state:
         st.session_state.qr_pendiente = ""
+    if 'resultado_busqueda' not in st.session_state:
+        st.session_state.resultado_busqueda = None
     
     # --- LECTOR QR PARA BUSCAR CON BOTÓN VERIFICAR ---
     with st.expander("📷 ESCANEAR QR PARA BUSCAR / 검색용 QR 스캔"):
@@ -454,6 +456,7 @@ def buscar():
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
                     st.session_state.qr_pendiente = texto_qr
+                    st.session_state.resultado_busqueda = None
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
@@ -464,12 +467,27 @@ def buscar():
         col_btn1, col_btn2, col_btn3 = st.columns([0.3, 0.4, 0.3])
         with col_btn2:
             if st.button("✅ VERIFICAR / 확인", key="btn_verificar_qr", use_container_width=True):
-                st.session_state.busqueda_actual = st.session_state.qr_pendiente
-                st.session_state.qr_pendiente = ""
-                st.rerun()
+                # BUSCAR EL QR EN LA BASE DE DATOS DIRECTAMENTE
+                with st.spinner("🔍 Buscando coincidencias... / 일치 항목 검색 중..."):
+                    time.sleep(0.5)
+                    inventario_total = obtener_inventario()
+                    
+                    # Buscar coincidencia usando la función existente
+                    item_encontrado = buscar_coincidencia_por_qr(st.session_state.qr_pendiente, inventario_total)
+                    
+                    if item_encontrado:
+                        # Guardar el resultado encontrado
+                        st.session_state.resultado_busqueda = item_encontrado
+                        st.session_state.busqueda_actual = f"{item_encontrado.get('nombre')}/{item_encontrado.get('item')}"
+                        st.session_state.qr_pendiente = ""
+                        st.success(f"✅ Material encontrado: {item_encontrado.get('nombre')} | {item_encontrado.get('item')}")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ No se encontró ningún material con: {st.session_state.qr_pendiente}")
+                        st.info("💡 Sugerencia: Verifica que el QR corresponda a un material registrado en el sistema.")
         st.markdown("---")
     
-    # --- BARRA DE BÚSQUEDA MANUAL (sigue igual, con Enter) ---
+    # --- BARRA DE BÚSQUEDA MANUAL ---
     busqueda = st.text_input(
         "ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", 
         value=st.session_state.busqueda_actual,
@@ -480,6 +498,7 @@ def buscar():
     # Actualizar variable de búsqueda si el usuario escribe manualmente
     if busqueda != st.session_state.busqueda_actual:
         st.session_state.busqueda_actual = busqueda
+        st.session_state.resultado_busqueda = None  # Limpiar resultado previo
     
     item_seleccionado = None
     stock_total = 0
@@ -493,7 +512,32 @@ def buscar():
     pos_y = 50
     tamanio_img = 100
     
-    if st.session_state.busqueda_actual:
+    # --- PRIMERO: Verificar si hay un resultado guardado del QR ---
+    if st.session_state.resultado_busqueda is not None:
+        item_seleccionado = st.session_state.resultado_busqueda
+        id_f = item_seleccionado.get('item')
+        col_f = item_seleccionado['cat_db']
+        nombre_item = item_seleccionado.get('nombre', '')
+        ubicacion_raw = item_seleccionado.get('ubicacion', '')
+        pos_x = item_seleccionado.get('pos_x', 50)
+        pos_y = item_seleccionado.get('pos_y', 50)
+        tamanio_img = item_seleccionado.get('tamanio', 100)
+        
+        if col_f == "holders":
+            rack_match = re.match(r'([A-Z]+\d*)', ubicacion_raw.upper())
+            rack_highlight = rack_match.group(1) if rack_match else None
+        
+        # Calcular stock total
+        inventario_total = obtener_inventario()
+        stock_total = 0
+        for item in inventario_total:
+            if item.get('item') == id_f and item.get('cat_db') == col_f:
+                stock_total += item.get('cantidad', 0)
+        
+        foto_url = obtener_url_final(item_seleccionado.get('foto_url', ''))
+    
+    # --- SEGUNDO: Buscar por texto manual ---
+    elif st.session_state.busqueda_actual:
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
@@ -699,10 +743,12 @@ def buscar():
                 st.session_state.user = None
                 st.session_state.busqueda_actual = ""
                 st.session_state.qr_pendiente = ""
+                st.session_state.resultado_busqueda = None
                 st.session_state.page = 'login'
             else:
                 st.session_state.busqueda_actual = ""
                 st.session_state.qr_pendiente = ""
+                st.session_state.resultado_busqueda = None
                 st.session_state.page = 'menu'
             st.rerun()
 
