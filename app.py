@@ -438,7 +438,13 @@ def menu():
 def buscar():
     st.header("BUSCAR MATERIAL / 재료 검색")
     
-    # --- LECTOR QR PARA BUSCAR ---
+    # --- INICIALIZAR VARIABLE DE BÚSQUEDA ---
+    if 'busqueda_actual' not in st.session_state:
+        st.session_state.busqueda_actual = ""
+    if 'qr_pendiente' not in st.session_state:
+        st.session_state.qr_pendiente = ""
+    
+    # --- LECTOR QR PARA BUSCAR CON BOTÓN VERIFICAR ---
     with st.expander("📷 ESCANEAR QR PARA BUSCAR / 검색용 QR 스캔"):
         cam_qr = st.camera_input("SCAN QR / QR 스캔", key="qr_cam_buscar")
         if cam_qr:
@@ -447,12 +453,33 @@ def buscar():
                 texto_qr = decodificar_qr(cam_qr)
                 if texto_qr:
                     st.success(f"✅ QR detectado: {texto_qr} / QR 감지됨")
-                    st.session_state["busqueda_input_buscar"] = texto_qr
+                    st.session_state.qr_pendiente = texto_qr
                     st.rerun()
                 else:
                     st.error("⚠️ No se detectó un QR claro. / 명확한 QR이 감지되지 않았습니다.")
     
-    busqueda = st.text_input("ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", key="busqueda_input_buscar").upper().strip()
+    # --- Mostrar QR pendiente con botón VERIFICAR ---
+    if st.session_state.qr_pendiente:
+        st.info(f"📱 QR escaneado: **{st.session_state.qr_pendiente}**")
+        col_btn1, col_btn2, col_btn3 = st.columns([0.3, 0.4, 0.3])
+        with col_btn2:
+            if st.button("✅ VERIFICAR / 확인", key="btn_verificar_qr", use_container_width=True):
+                st.session_state.busqueda_actual = st.session_state.qr_pendiente
+                st.session_state.qr_pendiente = ""
+                st.rerun()
+        st.markdown("---")
+    
+    # --- BARRA DE BÚSQUEDA MANUAL (sigue igual, con Enter) ---
+    busqueda = st.text_input(
+        "ESCRIBE ID o NOMBRE / 코드 또는 이름 입력", 
+        value=st.session_state.busqueda_actual,
+        key="busqueda_input_widget",
+        placeholder="Ej: PERRO o P-45"
+    ).upper().strip()
+    
+    # Actualizar variable de búsqueda si el usuario escribe manualmente
+    if busqueda != st.session_state.busqueda_actual:
+        st.session_state.busqueda_actual = busqueda
     
     item_seleccionado = None
     stock_total = 0
@@ -466,11 +493,13 @@ def buscar():
     pos_y = 50
     tamanio_img = 100
     
-    if busqueda:
+    if st.session_state.busqueda_actual:
         with st.spinner("🔍 Buscando en la base de datos... / 데이터베이스 검색 중..."):
             time.sleep(0.3)
             inventario_total = obtener_inventario()
-            coincidencias = [item for item in inventario_total if busqueda in str(item.get('nombre', '')).upper() or busqueda in str(item.get('item', '')).upper()]
+            coincidencias = [item for item in inventario_total 
+                           if st.session_state.busqueda_actual in str(item.get('nombre', '')).upper() 
+                           or st.session_state.busqueda_actual in str(item.get('item', '')).upper()]
             
             if coincidencias:
                 if len(coincidencias) > 1:
@@ -663,13 +692,19 @@ def buscar():
                         st.warning("⚠️ Pegue un enlace antes de guardar. / 링크를 붙여넣으세요.")
     
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("VOLVER / 돌아가기"): 
-        if st.session_state.user == "INVITADO":
-            st.session_state.user = None
-            st.session_state.page = 'login'
-        else:
-            st.session_state.page = 'menu'
-        st.rerun()
+    col_btn_back, _, _ = st.columns([0.2, 0.6, 0.2])
+    with col_btn_back:
+        if st.button("🔙 VOLVER / 돌아가기", use_container_width=True): 
+            if st.session_state.user == "INVITADO":
+                st.session_state.user = None
+                st.session_state.busqueda_actual = ""
+                st.session_state.qr_pendiente = ""
+                st.session_state.page = 'login'
+            else:
+                st.session_state.busqueda_actual = ""
+                st.session_state.qr_pendiente = ""
+                st.session_state.page = 'menu'
+            st.rerun()
 
 def formulario():
     cat, acc = st.session_state.get('categoria'), st.session_state.get('accion')
@@ -730,16 +765,13 @@ def formulario():
             
             if acc == "SALIDA":
                 if coincidencias:
-                    # Si hay UNA sola coincidencia, seleccionar automáticamente
                     if len(coincidencias) == 1:
                         item_sel = coincidencias[0]
                         cod_final = item_sel['item']
                         nombre_final = item_sel.get('nombre', '')
-                        # OBTENER LA UBICACIÓN ACTUAL DEL ITEM (no se cambia)
                         ubicacion_item = obtener_ubicacion_actual(cod_final, cat)
                         st.success(f"✅ Material encontrado: {item_sel['label']}")
                     else:
-                        # Múltiples coincidencias: mostrar selector
                         opciones = [c['label'] for c in coincidencias]
                         seleccion = st.selectbox("COINCIDENCIAS ENCONTRADAS / 일치 항목:", opciones)
                         item_sel = next(c for c in coincidencias if c['label'] == seleccion)
@@ -785,7 +817,6 @@ def formulario():
         with st.expander("📸 CAPTURAR EVIDENCIA / 증거 사진"):
             foto_evidencia = st.camera_input("FOTO EVIDENCIA", key="evidencia_cam_input")
         
-        # Usar la ubicación ACTUAL del item (la que tiene en Firebase, no "SALIDA")
         ubi = ubicacion_item if ubicacion_item and ubicacion_item != "SIN UBICACION" else "SIN UBICACION"
         bloqueado = (cant != cant_conf) or (not solicitante) or (not linea_uso) or (not cod_final)
     else:  # ENTRADA
